@@ -438,6 +438,9 @@ impl App {
             Err(e) => return self.alert("Can't load the config", &format!("{e:#}")),
         };
         let page = settings::SettingsPage::new(&config, config::is_read_only(path));
+        if crate::timer::nix_managed(&self.paths) {
+            page.timers_managed_by_nix();
+        }
         let app = Rc::downgrade(self);
         page.connect_save(move |new| {
             if let Some(app) = app.upgrade() {
@@ -458,7 +461,7 @@ impl App {
         if let Err(e) = saved {
             return self.alert("Can't save settings", &format!("{e:#}"));
         }
-        let timer = std::env::current_exe()
+        let timer = crate::self_exe()
             .map_err(anyhow::Error::from)
             .and_then(|exe| crate::timer::refresh_if_installed(&self.paths, new, &exe));
         match timer {

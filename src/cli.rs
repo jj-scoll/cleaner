@@ -190,7 +190,7 @@ fn cmd_plan(json: bool, notify: bool) -> anyhow::Result<i32> {
 /// A failure is only a warning; the plan is already saved.
 fn notify_plan(plan: &Plan, threshold: u64) {
     let mut launch = |id: &str| {
-        let started = std::env::current_exe().and_then(|exe| gui_launch_command(&exe, Some(id)).status());
+        let started = cleaner::self_exe().and_then(|exe| gui_launch_command(&exe, Some(id)).status());
         match started {
             Ok(s) if s.success() => {}
             Ok(s) => eprintln!("warning: starting the GUI failed: systemd-run {s}"),
@@ -235,7 +235,7 @@ fn cmd_if_low() -> anyhow::Result<i32> {
         eprintln!("warning: saving the low-space state failed: {e:#}");
     }
     let mut launch = |id: Option<&str>| {
-        let started = std::env::current_exe().and_then(|exe| gui_launch_command(&exe, id).status());
+        let started = cleaner::self_exe().and_then(|exe| gui_launch_command(&exe, id).status());
         match started {
             Ok(s) if s.success() => {}
             Ok(s) => eprintln!("warning: starting the GUI failed: systemd-run {s}"),
@@ -466,7 +466,7 @@ fn cmd_timer(action: TimerCmd) -> anyhow::Result<i32> {
     match action {
         TimerCmd::Install => {
             let config = load_config(&paths)?;
-            let exe = std::env::current_exe()?.canonicalize()?;
+            let exe = cleaner::self_exe()?.canonicalize()?;
             timer::install(&paths, &config, &exe)?;
             println!("Timer installed: `{}` runs daily at {}.", exe.display(), config.timer_time);
         }

@@ -3,3 +3,5 @@
 .claude/
 .gcroots/
 docs/superpowers/
+HANDOFF.md
+.handoff-next-*.md

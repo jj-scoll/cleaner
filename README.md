@@ -129,6 +129,23 @@ cleaner timer install                    # again after every upgrade
 
 The timer units point at the package's store path, so re-run `cleaner timer install` after each `nix profile upgrade`.
 
+With home-manager, the flake's module declares the timers instead, so they follow every rebuild:
+
+```nix
+# flake inputs
+cleaner = { url = "github:jj-scoll/cleaner"; inputs.nixpkgs.follows = "nixpkgs"; };
+
+# home-manager config
+imports = [ inputs.cleaner.homeManagerModules.default ];
+services.cleaner = {
+  enable = true;
+  nightlyAt = "03:00";       # default
+  lowSpaceEvery = "10min";   # default; null turns the check off
+};
+```
+
+Run `cleaner timer uninstall` before the first switch if you had installed the timers by hand. Once Nix owns them, `cleaner timer install` and the GUI's timer settings leave them alone.
+
 ### Build from source
 
 #### Requirements

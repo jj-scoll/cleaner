@@ -263,6 +263,14 @@ pub struct SettingsPage {
 }
 
 impl SettingsPage {
+    /// The timers are declared in Nix, so their rows here would do nothing:
+    /// grey them out and say where they are set.
+    pub fn timers_managed_by_nix(&self) {
+        self.inner.time.set_sensitive(false);
+        self.inner.low_enabled.set_sensitive(false);
+        self.inner.low_enabled.set_subtitle("The nightly time and low-space check are set in Nix (services.cleaner).");
+    }
+
     /// One group per section; a read-only config shows a banner, greys out
     /// every row and hides Save.
     pub fn new(config: &Config, read_only: bool) -> SettingsPage {

@@ -122,6 +122,15 @@ fn space_files(paths: &Paths) -> [PathBuf; 2] {
     [paths.systemd_user_dir.join(SPACE_SERVICE), paths.systemd_user_dir.join(SPACE_TIMER)]
 }
 
+const NIX_MANAGED: &str = "the timers are managed by Nix; change services.cleaner in your home-manager config instead";
+
+/// Whether the nightly units are symlinks into the Nix store, as
+/// home-manager's `services.cleaner` links them. Nix owns them then.
+pub fn nix_managed(paths: &Paths) -> bool {
+    let [service, timer, _] = unit_files(paths);
+    [service, timer].iter().any(|f| std::fs::read_link(f).is_ok_and(|t| t.starts_with("/nix/store")))
+}
+
 fn remove_if_present(f: &Path) -> anyhow::Result<()> {
     match std::fs::remove_file(f) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -158,6 +167,9 @@ fn systemctl(args: &[&str]) -> anyhow::Result<String> {
 /// space units when `low_space.enabled`, then reloads and enables the timers.
 /// With low-space off the space timer is disabled and its files removed.
 pub fn install(paths: &Paths, config: &Config, exe: &Path) -> anyhow::Result<()> {
+    if nix_managed(paths) {
+        bail!(NIX_MANAGED);
+    }
     let timer = render_timer(&config.timer_time)?;
     let space_timer = render_space_timer(&config.low_space.interval)?;
     let [service_path, timer_path, desktop_path] = unit_files(paths);
@@ -189,6 +201,9 @@ fn remove_space_units(paths: &Paths) -> anyhow::Result<()> {
 /// Disables both timers (a failure, e.g. not enabled, is ignored), removes the
 /// five files if present, then reloads.
 pub fn uninstall(paths: &Paths) -> anyhow::Result<()> {
+    if nix_managed(paths) {
+        bail!(NIX_MANAGED);
+    }
     let _ = systemctl(&["disable", "--now", TIMER]);
     let _ = systemctl(&["disable", "--now", SPACE_TIMER]);
     for f in unit_files(paths).iter().chain(space_files(paths).iter()) {
@@ -201,19 +216,26 @@ pub fn uninstall(paths: &Paths) -> anyhow::Result<()> {
 /// `units: installed|not installed`, then what systemd says about both timers.
 pub fn status(paths: &Paths) -> anyhow::Result<String> {
     let [service, timer, _] = unit_files(paths);
-    let state = if service.is_file() && timer.is_file() { "installed" } else { "not installed" };
+    let state = if nix_managed(paths) {
+        "managed by Nix"
+    } else if service.is_file() && timer.is_file() {
+        "installed"
+    } else {
+        "not installed"
+    };
     let timers = systemctl(&["list-timers", TIMER, SPACE_TIMER, "--no-pager"])?;
     Ok(format!("units: {state}\n{timers}"))
 }
 
 /// After a settings change: if the nightly timer is installed, re-renders it,
 /// syncs the space units to the config (write + enable, or disable + remove)
-/// and reloads; returns whether it did. A bad time or interval writes nothing.
+/// and reloads; returns whether it did. A bad time or interval writes nothing,
+/// and so do units Nix manages.
 /// The services are left alone, so they keep the binary `install` was run from,
 /// except a newly enabled space service, which takes `exe`.
 pub fn refresh_if_installed(paths: &Paths, config: &Config, exe: &Path) -> anyhow::Result<bool> {
     let [_, timer_path, _] = unit_files(paths);
-    if !timer_path.is_file() {
+    if nix_managed(paths) || !timer_path.is_file() {
         return Ok(false);
     }
     let timer = render_timer(&config.timer_time)?;

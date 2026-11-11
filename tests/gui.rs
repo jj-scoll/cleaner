@@ -249,6 +249,33 @@ fn spin_rows(w: &gtk::Widget) -> Vec<adw::SpinRow> {
     out
 }
 
+fn find_row(w: &gtk::Widget, title: &str) -> Option<adw::PreferencesRow> {
+    if let Some(r) = w.downcast_ref::<adw::PreferencesRow>().filter(|r| r.title() == title) {
+        return Some(r.clone());
+    }
+    let mut child = w.first_child();
+    while let Some(c) = child {
+        if let Some(r) = find_row(&c, title) {
+            return Some(r);
+        }
+        child = c.next_sibling();
+    }
+    None
+}
+
+/// With the timers declared in Nix, their settings here would do nothing.
+fn settings_nix_managed_timers() {
+    let page = SettingsPage::new(&Config::default(), false);
+    page.timers_managed_by_nix();
+    assert_has(&texts(&page.page()), "The nightly time and low-space check are set in Nix (services.cleaner).");
+    for title in ["Nightly plan time (HH:MM)", "Warn when disk space is low"] {
+        let row = find_row(page.page().upcast_ref(), title).unwrap_or_else(|| panic!("no row {title:?}"));
+        assert!(!row.is_sensitive(), "{title} is editable");
+    }
+    let percent = find_row(page.page().upcast_ref(), "Warn when free space is below (%)").unwrap();
+    assert!(percent.is_sensitive(), "the low-space threshold is still read from config.toml");
+}
+
 /// 0 days would pre-select every stopped container or prune all unused build cache.
 fn settings_docker_days_at_least_one() {
     let page = SettingsPage::new(&Config::default(), false);
@@ -385,6 +412,7 @@ fn main() {
         ("settings_docker_days_at_least_one", settings_docker_days_at_least_one),
         ("settings_general_has_scan_roots_and_low_space", settings_general_has_scan_roots_and_low_space),
         ("settings_shows_root_overrides", settings_shows_root_overrides),
+        ("settings_nix_managed_timers", settings_nix_managed_timers),
         ("close_blocked_while_cleaning", close_blocked_while_cleaning),
         ("usage_page_lists_rows", usage_page_lists_rows),
         ("usage_page_has_no_delete", usage_page_has_no_delete),

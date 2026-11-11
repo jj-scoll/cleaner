@@ -304,3 +304,54 @@ fn refresh_syncs_space_timer() {
     let timer = std::fs::read_to_string(&env.space_files()[1]).unwrap();
     assert!(timer.contains("OnUnitActiveSec=1h\n"), "{timer}");
 }
+
+/// The nightly units as home-manager links them: symlinks into the Nix store
+/// (dangling here, which `read_link` doesn't mind).
+fn link_units_from_nix(env: &Env) -> Vec<PathBuf> {
+    let dir = env.paths().systemd_user_dir;
+    std::fs::create_dir_all(&dir).unwrap();
+    ["cleaner.service", "cleaner.timer"]
+        .iter()
+        .map(|name| {
+            let f = dir.join(name);
+            let target = format!("/nix/store/0000-home-manager-files/.config/systemd/user/{name}");
+            std::os::unix::fs::symlink(target, &f).unwrap();
+            f
+        })
+        .collect()
+}
+
+#[test]
+fn nix_managed_units_are_left_alone() {
+    fake_systemctl_in_process();
+    let env = Env::new();
+    let links = link_units_from_nix(&env);
+    for args in [["timer", "install"], ["timer", "uninstall"]] {
+        env.cmd(&args).assert().code(1).stderr(contains("managed by Nix"));
+    }
+    env.cmd(&["timer", "status"]).assert().success().stdout(contains("units: managed by Nix\n"));
+    let config = Config { timer_time: "04:30".into(), ..Default::default() };
+    assert!(!refresh_if_installed(&env.paths(), &config, Path::new("/x/cleaner")).unwrap());
+    for f in &links {
+        assert!(std::fs::read_link(f).unwrap().starts_with("/nix/store"), "{} replaced", f.display());
+    }
+    for f in env.space_files().iter().chain(&env.unit_files()[2..]) {
+        assert!(!f.exists(), "{} written", f.display());
+    }
+    assert_eq!(env.calls(), ["--user list-timers cleaner.timer cleaner-space.timer --no-pager"]);
+}
+
+/// The Nix package's wrapper sets CLEANER_EXE to itself, so units and the
+/// notification's GUI launch get the wrapper's environment.
+#[test]
+fn install_uses_cleaner_exe_when_set() {
+    let env = Env::new();
+    let wrapper = env.tmp.path().join("wrapper/cleaner");
+    std::fs::create_dir_all(wrapper.parent().unwrap()).unwrap();
+    std::fs::write(&wrapper, "").unwrap();
+    env.cmd(&["timer", "install"]).env("CLEANER_EXE", &wrapper).assert().success();
+    let [service, _, desktop] = env.unit_files().map(|f| std::fs::read_to_string(f).unwrap());
+    let want = wrapper.canonicalize().unwrap();
+    assert!(service.contains(&format!("ExecStart=\"{}\" plan --notify\n", want.display())), "{service}");
+    assert!(desktop.contains(&format!("Exec=\"{}\" gui\n", want.display())), "{desktop}");
+}
