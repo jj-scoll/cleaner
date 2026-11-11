@@ -192,6 +192,11 @@ fn real_store_path() -> String {
 fn result_links() {
     let tmp = tempfile::tempdir().unwrap();
     let h = tmp.path();
+    // A live link needs a real store target. CI's Nix job always has one.
+    if !Path::new("/nix/store").is_dir() {
+        eprintln!("result_links: skipped (no /nix/store on this machine)");
+        return;
+    }
     let live = real_store_path();
     fs::create_dir_all(h.join("proj/node_modules/dep")).unwrap();
     symlink("/nix/store/zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-gone", h.join("proj/result")).unwrap();

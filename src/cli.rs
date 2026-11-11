@@ -197,8 +197,10 @@ fn notify_plan(plan: &Plan, threshold: u64) {
             Err(e) => eprintln!("warning: starting the GUI failed: {e}"),
         }
     };
-    let notifier = DbusNotifier::default();
-    if let Err(e) = notify_if_worth_it(plan, threshold, &notifier, &mut launch) {
+    let gui = cfg!(feature = "gui");
+    let notifier = DbusNotifier::new(gui);
+    let launch: Option<&mut dyn FnMut(&str)> = if gui { Some(&mut launch) } else { None };
+    if let Err(e) = notify_if_worth_it(plan, threshold, &notifier, launch) {
         eprintln!("warning: notification failed: {e:#}");
     }
 }
@@ -240,9 +242,10 @@ fn cmd_if_low() -> anyhow::Result<i32> {
             Err(e) => eprintln!("warning: starting the GUI failed: {e}"),
         }
     };
-    let notifier = DbusNotifier::default();
-    if let Err(e) = cleaner::notify::notify_low_space(&low, saved.as_ref().map_err(Clone::clone), &notifier, &mut launch)
-    {
+    let gui = cfg!(feature = "gui");
+    let notifier = DbusNotifier::new(gui);
+    let launch: Option<cleaner::notify::LowSpaceLaunch<'_>> = if gui { Some(&mut launch) } else { None };
+    if let Err(e) = cleaner::notify::notify_low_space(&low, saved.as_ref().map_err(Clone::clone), &notifier, launch) {
         eprintln!("warning: notification failed: {e:#}");
     }
     Ok(0)

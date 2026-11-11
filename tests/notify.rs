@@ -18,13 +18,20 @@ use tempfile::TempDir;
 struct FakeNotifier {
     calls: RefCell<Vec<(String, String)>>,
     urgent: RefCell<Vec<(String, String)>>,
+    waits: std::cell::Cell<u32>,
     click: bool,
     fail: bool,
 }
 
 impl FakeNotifier {
     fn new(click: bool) -> FakeNotifier {
-        FakeNotifier { calls: RefCell::new(Vec::new()), urgent: RefCell::new(Vec::new()), click, fail: false }
+        FakeNotifier {
+            calls: RefCell::new(Vec::new()),
+            urgent: RefCell::new(Vec::new()),
+            waits: std::cell::Cell::new(0),
+            click,
+            fail: false,
+        }
     }
 }
 
@@ -44,6 +51,7 @@ impl Notifier for FakeNotifier {
 
     fn wait_for_click(&self, id: u32, _timeout: Duration) -> anyhow::Result<bool> {
         assert_eq!(id, 7);
+        self.waits.set(self.waits.get() + 1);
         Ok(self.click)
     }
 }
@@ -74,7 +82,7 @@ const GIB: u64 = 1 << 30;
 /// Runs `notify_if_worth_it` and returns the outcome and the launched ids.
 fn run(plan: &Plan, n: &FakeNotifier) -> (NotifyOutcome, Vec<String>) {
     let mut launched = Vec::new();
-    let out = notify_if_worth_it(plan, GIB, n, &mut |id: &str| launched.push(id.to_string())).unwrap();
+    let out = notify_if_worth_it(plan, GIB, n, Some(&mut |id: &str| launched.push(id.to_string()))).unwrap();
     (out, launched)
 }
 
@@ -158,13 +166,13 @@ fn low_space_text_saved() {
     let plan = plan_with(12 * GIB);
     let home = low_fs("/home", 100, 3);
     assert_eq!(
-        low_space_text(std::slice::from_ref(&home), Ok(&plan)),
+        low_space_text(std::slice::from_ref(&home), Ok(&plan), true),
         (
             "/home is almost full: 3.0 GiB free (97% used)".to_string(),
             "A plan can free 12.0 GiB. Nothing has been deleted.".to_string()
         )
     );
-    let (_, body) = low_space_text(&[home, low_fs("/data", 500, 40)], Ok(&plan));
+    let (_, body) = low_space_text(&[home, low_fs("/data", 500, 40)], Ok(&plan), true);
     assert_eq!(
         body,
         "A plan can free 12.0 GiB. Nothing has been deleted. Also low: /data (40.0 GiB free)."
@@ -173,7 +181,7 @@ fn low_space_text_saved() {
 
 #[test]
 fn low_space_text_unsaved_disk_full() {
-    let (_, body) = low_space_text(&[low_fs("/home", 100, 3)], Err("disk full".into()));
+    let (_, body) = low_space_text(&[low_fs("/home", 100, 3)], Err("disk full".into()), true);
     assert_eq!(
         body,
         "The plan could not be saved: disk full. Nothing has been deleted. Open cleaner to free space."
@@ -186,7 +194,7 @@ fn low_space_notifies_urgent_regardless_of_threshold() {
     let plan = plan_with(0);
     let n = FakeNotifier::new(true);
     let mut launched: Vec<Option<String>> = Vec::new();
-    let out = notify_low_space(&low, Ok(&plan), &n, &mut |id| launched.push(id.map(str::to_string))).unwrap();
+    let out = notify_low_space(&low, Ok(&plan), &n, Some(&mut |id| launched.push(id.map(str::to_string)))).unwrap();
     assert_eq!(out, NotifyOutcome::Opened);
     assert_eq!(n.urgent.borrow().len(), 1);
     assert!(n.calls.borrow().is_empty());
@@ -194,13 +202,59 @@ fn low_space_notifies_urgent_regardless_of_threshold() {
 
     let n = FakeNotifier::new(true);
     let mut launched: Vec<Option<String>> = Vec::new();
-    notify_low_space(&low, Err("disk full".into()), &n, &mut |id| launched.push(id.map(str::to_string)))
+    notify_low_space(&low, Err("disk full".into()), &n, Some(&mut |id| launched.push(id.map(str::to_string))))
         .unwrap();
     assert_eq!(launched, [None]);
 
     let n = FakeNotifier::new(false);
-    let out = notify_low_space(&low, Ok(&plan), &n, &mut |_| panic!("no click")).unwrap();
+    let out = notify_low_space(&low, Ok(&plan), &n, Some(&mut |_| panic!("no click"))).unwrap();
     assert_eq!(out, NotifyOutcome::Dismissed);
+}
+
+/// A build without the GUI has nothing a click could open: the copy says how
+/// to review from the terminal, and the timer's service exits at once
+/// instead of waiting hours for a click.
+#[test]
+fn cli_build_points_at_show_and_does_not_wait() {
+    let n = FakeNotifier::new(true);
+    let out = notify_if_worth_it(&plan_with(2 * GIB), GIB, &n, None).unwrap();
+    assert_eq!(out, NotifyOutcome::Sent);
+    assert_eq!(
+        *n.calls.borrow(),
+        [(
+            "2.0 GiB can be freed".to_string(),
+            "cleaner built a plan; nothing has been deleted. Run `cleaner show` to review it.".to_string()
+        )]
+    );
+    assert_eq!(n.waits.get(), 0);
+
+    let n = FakeNotifier::new(true);
+    let out = notify_if_worth_it(&plan_with(500 << 20), GIB, &n, None).unwrap();
+    assert_eq!(out, NotifyOutcome::BelowThreshold);
+    assert!(n.calls.borrow().is_empty());
+}
+
+#[test]
+fn cli_build_low_space_points_at_terminal_and_does_not_wait() {
+    let low = [low_fs("/home", 100, 3)];
+    let plan = plan_with(12 * GIB);
+    let n = FakeNotifier::new(true);
+    let out = notify_low_space(&low, Ok(&plan), &n, None).unwrap();
+    assert_eq!(out, NotifyOutcome::Sent);
+    assert_eq!(n.urgent.borrow().len(), 1);
+    assert_eq!(n.waits.get(), 0);
+
+    let (_, body) = low_space_text(&[low_fs("/home", 100, 3), low_fs("/data", 500, 40)], Ok(&plan), false);
+    assert_eq!(
+        body,
+        "A plan can free 12.0 GiB. Nothing has been deleted. Run `cleaner show` to review it. \
+         Also low: /data (40.0 GiB free)."
+    );
+    let (_, body) = low_space_text(&low, Err("disk full".into()), false);
+    assert_eq!(
+        body,
+        "The plan could not be saved: disk full. Nothing has been deleted. Free some space, then run `cleaner plan`."
+    );
 }
 
 #[test]
@@ -215,7 +269,7 @@ fn dismiss_does_not_launch() {
 fn notify_error_is_returned() {
     let n = FakeNotifier { fail: true, ..FakeNotifier::new(true) };
     let mut launched = 0;
-    assert!(notify_if_worth_it(&plan_with(GIB), GIB, &n, &mut |_: &str| launched += 1).is_err());
+    assert!(notify_if_worth_it(&plan_with(GIB), GIB, &n, Some(&mut |_: &str| launched += 1)).is_err());
     assert_eq!(launched, 0);
 }
 

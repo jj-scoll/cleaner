@@ -34,12 +34,18 @@ const PATH: &str = "/org/freedesktop/Notifications";
 
 /// Session-bus notifier. `notify` subscribes to the daemon's signals before
 /// sending, so `wait_for_click` can't miss a fast click.
-#[derive(Default)]
 pub struct DbusNotifier {
     signals: Mutex<Option<MessageStream>>,
+    clickable: bool,
 }
 
 impl DbusNotifier {
+    /// `clickable`: attach the "Review plan" action. Pass false when there is
+    /// no GUI for a click to open.
+    pub fn new(clickable: bool) -> DbusNotifier {
+        DbusNotifier { signals: Mutex::new(None), clickable }
+    }
+
     fn send(&self, summary: &str, body: &str, urgency: u8) -> anyhow::Result<u32> {
         let (signals, id) = zbus::block_on(async {
             let conn = Connection::session().await.context("connecting to the session bus")?;
@@ -51,13 +57,14 @@ impl DbusNotifier {
             let signals = MessageStream::for_match_rule(rule, &conn, None).await?;
             let hints: HashMap<&str, Variant> =
                 HashMap::from([("desktop-entry", Variant::from(APP_ID)), ("urgency", Variant::from(urgency))]);
+            let actions = if self.clickable { vec!["default", "Review plan"] } else { Vec::new() };
             let reply = conn
                 .call_method(
                     Some(DEST),
                     PATH,
                     Some(DEST),
                     "Notify",
-                    &("Cleaner", 0u32, "edit-clear-all-symbolic", summary, body, vec!["default", "Review plan"], hints, 0i32),
+                    &("Cleaner", 0u32, "edit-clear-all-symbolic", summary, body, actions, hints, 0i32),
                 )
                 .await
                 .context("calling org.freedesktop.Notifications.Notify")?;
@@ -117,11 +124,13 @@ impl Notifier for DbusNotifier {
     }
 }
 
-/// Summary and body; the copy is fixed by the plan.
-pub fn notify_text(plan: &Plan) -> (String, String) {
+/// Summary and body; the copy is fixed by the plan. `gui`: a click can open
+/// the review; without it the body points at `cleaner show`.
+pub fn notify_text(plan: &Plan, gui: bool) -> (String, String) {
+    let review = if gui { "Click to review it." } else { "Run `cleaner show` to review it." };
     (
         format!("{} can be freed", human_bytes(plan.selected_bytes())),
-        "cleaner built a plan; nothing has been deleted. Click to review it.".to_string(),
+        format!("cleaner built a plan; nothing has been deleted. {review}"),
     )
 }
 
@@ -130,21 +139,25 @@ pub enum NotifyOutcome {
     BelowThreshold,
     Dismissed,
     Opened,
+    /// Sent with no click to wait for: this build has no GUI to open.
+    Sent,
 }
 
 /// Notifies if the plan's selected total is at least `threshold`, waits up to
-/// `WAIT` for a click, and on a click calls `launch(&plan.id)`.
+/// `WAIT` for a click, and on a click calls `launch(&plan.id)`. With no
+/// `launch` (a build without the GUI) it returns as soon as it has sent.
 pub fn notify_if_worth_it(
     plan: &Plan,
     threshold: u64,
     n: &dyn Notifier,
-    launch: &mut dyn FnMut(&str),
+    launch: Option<&mut dyn FnMut(&str)>,
 ) -> anyhow::Result<NotifyOutcome> {
     if plan.selected_bytes() < threshold {
         return Ok(NotifyOutcome::BelowThreshold);
     }
-    let (summary, body) = notify_text(plan);
+    let (summary, body) = notify_text(plan, launch.is_some());
     let id = n.notify(&summary, &body)?;
+    let Some(launch) = launch else { return Ok(NotifyOutcome::Sent) };
     if n.wait_for_click(id, WAIT)? {
         launch(&plan.id);
         Ok(NotifyOutcome::Opened)
@@ -154,15 +167,20 @@ pub fn notify_if_worth_it(
 }
 
 /// Summary and body for the low-space notification; the copy is fixed by the
-/// plan. `low` is non-empty; its first filesystem is the headline.
-pub fn low_space_text(low: &[FsUsage], plan: Result<&Plan, String>) -> (String, String) {
+/// plan. `low` is non-empty; its first filesystem is the headline. `gui` as
+/// for `notify_text`.
+pub fn low_space_text(low: &[FsUsage], plan: Result<&Plan, String>, gui: bool) -> (String, String) {
     let first = &low[0];
     let used = ((first.total.saturating_sub(first.avail)) as f64 * 100.0 / first.total as f64).round();
     let summary = format!("{} is almost full: {} free ({used}% used)", first.label, human_bytes(first.avail));
     let mut body = match plan {
-        Ok(p) => format!("A plan can free {}. Nothing has been deleted.", human_bytes(p.selected_bytes())),
+        Ok(p) => {
+            let review = if gui { "" } else { " Run `cleaner show` to review it." };
+            format!("A plan can free {}. Nothing has been deleted.{review}", human_bytes(p.selected_bytes()))
+        }
         Err(reason) => {
-            format!("The plan could not be saved: {reason}. Nothing has been deleted. Open cleaner to free space.")
+            let next = if gui { "Open cleaner to free space." } else { "Free some space, then run `cleaner plan`." };
+            format!("The plan could not be saved: {reason}. Nothing has been deleted. {next}")
         }
     };
     for f in &low[1..] {
@@ -171,18 +189,23 @@ pub fn low_space_text(low: &[FsUsage], plan: Result<&Plan, String>) -> (String, 
     (summary, body)
 }
 
+/// What a click on the low-space notification starts: the GUI on a plan id,
+/// or on no plan when none was saved.
+pub type LowSpaceLaunch<'a> = &'a mut dyn FnMut(Option<&str>);
+
 /// The low-space notification: always sent (the threshold doesn't apply),
 /// urgent, waits `LOW_SPACE_WAIT`; a click calls `launch` with the plan id, or
-/// `None` when no plan was saved.
+/// `None` when no plan was saved. With no `launch` it returns once sent.
 pub fn notify_low_space(
     low: &[FsUsage],
     plan: Result<&Plan, String>,
     n: &dyn Notifier,
-    launch: &mut dyn FnMut(Option<&str>),
+    launch: Option<LowSpaceLaunch<'_>>,
 ) -> anyhow::Result<NotifyOutcome> {
     let id = plan.as_ref().ok().map(|p| p.id.clone());
-    let (summary, body) = low_space_text(low, plan);
+    let (summary, body) = low_space_text(low, plan, launch.is_some());
     let nid = n.notify_urgent(&summary, &body)?;
+    let Some(launch) = launch else { return Ok(NotifyOutcome::Sent) };
     if n.wait_for_click(nid, LOW_SPACE_WAIT)? {
         launch(id.as_deref());
         Ok(NotifyOutcome::Opened)

@@ -50,9 +50,12 @@ fn git_commit_now(dir: &Path) {
             .current_dir(dir)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             // git still reads $XDG_CONFIG_HOME/git/ignore without a global config.
-            .env("GIT_CONFIG_COUNT", "1")
+            // No detached `git maintenance` left running after a commit (git >= 2.47).
+            .env("GIT_CONFIG_COUNT", "2")
             .env("GIT_CONFIG_KEY_0", "core.excludesFile")
             .env("GIT_CONFIG_VALUE_0", "/dev/null")
+            .env("GIT_CONFIG_KEY_1", "maintenance.auto")
+            .env("GIT_CONFIG_VALUE_1", "false")
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
@@ -314,9 +317,12 @@ fn git_fixed(dir: &Path, args: &[&str]) {
         .current_dir(dir)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         // git still reads $XDG_CONFIG_HOME/git/ignore without a global config.
-        .env("GIT_CONFIG_COUNT", "1")
+        // No detached `git maintenance` left running after a commit (git >= 2.47).
+        .env("GIT_CONFIG_COUNT", "2")
         .env("GIT_CONFIG_KEY_0", "core.excludesFile")
         .env("GIT_CONFIG_VALUE_0", "/dev/null")
+        .env("GIT_CONFIG_KEY_1", "maintenance.auto")
+        .env("GIT_CONFIG_VALUE_1", "false")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_AUTHOR_NAME", "Test")
         .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
