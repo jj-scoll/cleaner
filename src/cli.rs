@@ -15,6 +15,7 @@ use cleaner::paths::Paths;
 use cleaner::plan::{Entry, Plan};
 use cleaner::timer;
 use cleaner::view::category_order;
+use cleaner::view::review::Sort;
 
 #[derive(Parser)]
 #[command(name = "cleaner", version, about = "Approve-first disk cleanup")]
@@ -43,6 +44,10 @@ pub enum Cmd {
         plan: Option<String>,
         #[arg(long)]
         json: bool,
+        /// Order within each category: size (largest first), name, or age
+        /// (least recently touched first).
+        #[arg(long, default_value = "size", value_parser = parse_sort)]
+        sort: Sort,
     },
     /// Delete the selected entries of a plan.
     Apply {
@@ -102,7 +107,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         Some(Cmd::Gui { plan }) => cmd_gui(plan),
         Some(Cmd::Plan { if_low: true, .. }) => cmd_if_low(),
         Some(Cmd::Plan { json, notify, .. }) => cmd_plan(json, notify),
-        Some(Cmd::Show { plan, json }) => cmd_show(plan, json),
+        Some(Cmd::Show { plan, json, sort }) => cmd_show(plan, json, sort),
         Some(Cmd::Apply { plan, only, yes }) => cmd_apply(plan, &only, yes),
         Some(Cmd::Status { json }) => cmd_status(json),
         Some(Cmd::Log { since, json }) => cmd_log(since, json),
@@ -265,7 +270,11 @@ fn print_entry(e: &Entry) {
     }
 }
 
-fn cmd_show(id: Option<String>, json: bool) -> anyhow::Result<i32> {
+fn parse_sort(s: &str) -> Result<Sort, String> {
+    Sort::parse(s).ok_or_else(|| format!("expected size, name or age, got {s:?}"))
+}
+
+fn cmd_show(id: Option<String>, json: bool, sort: Sort) -> anyhow::Result<i32> {
     let paths = Paths::from_env()?;
     let (path, plan) = resolve_plan(&paths, id)?;
     Plan::mark_shown(&paths.state_dir, &plan.id)?;
@@ -276,7 +285,8 @@ fn cmd_show(id: Option<String>, json: bool) -> anyhow::Result<i32> {
     println!("Plan {} (created {}), {}", plan.id, local_time(plan.created), path.display());
     println!("Total selected: {}", human_bytes(plan.selected_bytes()));
     for cat in category_order(&plan) {
-        let entries: Vec<&Entry> = plan.entries.iter().filter(|e| e.category == cat).collect();
+        let mut entries: Vec<&Entry> = plan.entries.iter().filter(|e| e.category == cat).collect();
+        sort.apply(&mut entries);
         if entries.is_empty() {
             continue;
         }
@@ -292,7 +302,9 @@ fn cmd_show(id: Option<String>, json: bool) -> anyhow::Result<i32> {
     }
     if !plan.report_only.is_empty() {
         println!("\nReport only");
-        for e in &plan.report_only {
+        let mut report_only: Vec<&Entry> = plan.report_only.iter().collect();
+        sort.apply(&mut report_only);
+        for e in report_only {
             println!("  {:>10}  {}  {}  ({})", human_bytes(e.bytes), e.category, e.title, e.reason);
         }
     }

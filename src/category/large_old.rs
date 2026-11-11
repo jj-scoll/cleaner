@@ -106,6 +106,7 @@ impl Visit<'_, '_> {
             selected: false,
             permanent: false,
             note: (!note.is_empty()).then(|| note.join(" · ")),
+            last_active: None,
         });
     }
 }

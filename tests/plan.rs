@@ -28,6 +28,7 @@ fn item(path: PathBuf, bytes: u64, selected: bool) -> Entry {
         selected,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 

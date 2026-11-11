@@ -2,6 +2,7 @@
 //! selection. Only plan entries can be selected; report-only rows never.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use super::{category_label, category_order};
 use crate::fmt::human_bytes;
@@ -43,6 +44,72 @@ pub struct Confirm {
 pub struct ReviewModel {
     plan: Plan,
     selected: BTreeSet<String>,
+    sort: Sort,
+}
+
+/// How a group's rows are ordered.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sort {
+    /// Largest first.
+    #[default]
+    Size,
+    /// A to Z, ignoring case.
+    Name,
+    /// Least recently touched first; rows with no age (tool operations,
+    /// store rules, Docker and Nix objects) last.
+    Age,
+}
+
+/// Holds the GUI's last choice, in the state dir.
+const SORT_FILE: &str = "review_sort";
+
+impl Sort {
+    pub const ALL: [Sort; 3] = [Sort::Size, Sort::Name, Sort::Age];
+
+    /// The picker's label.
+    pub fn label(self) -> &'static str {
+        match self {
+            Sort::Size => "Size",
+            Sort::Name => "Name",
+            Sort::Age => "Age",
+        }
+    }
+
+    /// `size`, `name` or `age`: the `--sort` value and the saved one.
+    pub fn parse(s: &str) -> Option<Sort> {
+        Sort::ALL.into_iter().find(|x| x.label().eq_ignore_ascii_case(s))
+    }
+
+    /// The saved choice; `Size` when none is saved or it can't be read.
+    pub fn load(state_dir: &Path) -> Sort {
+        std::fs::read_to_string(state_dir.join(SORT_FILE)).ok().and_then(|s| Sort::parse(s.trim())).unwrap_or_default()
+    }
+
+    pub fn save(self, state_dir: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(state_dir)?;
+        std::fs::write(state_dir.join(SORT_FILE), self.label().to_ascii_lowercase())
+    }
+
+    /// Orders `entries` in place; title, then id, break ties.
+    pub fn apply(self, entries: &mut [&Entry]) {
+        entries.sort_by(|a, b| {
+            let primary = match self {
+                Sort::Size => b.bytes.cmp(&a.bytes),
+                Sort::Name => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
+                Sort::Age => last_touched(a).unwrap_or(i64::MAX).cmp(&last_touched(b).unwrap_or(i64::MAX)),
+            };
+            primary.then_with(|| a.title.cmp(&b.title)).then_with(|| a.id.cmp(&b.id))
+        });
+    }
+}
+
+/// When the entry was last used: the category's `last_active` if it set one,
+/// else its newest target's mtime.
+fn last_touched(e: &Entry) -> Option<i64> {
+    e.last_active.or_else(|| match &e.kind {
+        EntryKind::Item { targets } => targets.iter().map(|t| t.fp.newest_mtime).max(),
+        _ => None,
+    })
 }
 
 fn row(e: &Entry, selected: bool) -> Row {
@@ -66,16 +133,24 @@ impl ReviewModel {
     /// Starts with the plan's own selection.
     pub fn new(plan: Plan) -> ReviewModel {
         let selected = plan.entries.iter().filter(|e| e.selected).map(|e| e.id.clone()).collect();
-        ReviewModel { plan, selected }
+        ReviewModel { plan, selected, sort: Sort::default() }
+    }
+
+    pub fn sort(&self) -> Sort {
+        self.sort
+    }
+
+    pub fn set_sort(&mut self, sort: Sort) {
+        self.sort = sort;
     }
 
     pub fn plan(&self) -> &Plan {
         &self.plan
     }
 
-    /// Non-empty groups in category order (skip-only categories last);
-    /// `filter` keeps one category.
-    pub fn groups(&self, filter: Option<&str>) -> Vec<Group> {
+    /// Non-empty groups in category order (skip-only categories last), rows
+    /// in `sort` order; `filter` keeps one category.
+    pub fn groups<'a>(&'a self, filter: Option<&str>) -> Vec<Group> {
         let mut order = category_order(&self.plan);
         for s in &self.plan.skipped {
             if !order.contains(&s.category) {
@@ -86,22 +161,16 @@ impl ReviewModel {
             .into_iter()
             .filter(|c| in_filter(c, filter))
             .filter_map(|category| {
-                let rows: Vec<Row> = self
-                    .plan
-                    .entries
-                    .iter()
-                    .filter(|e| e.category == category)
-                    .map(|e| row(e, self.selected.contains(&e.id)))
-                    .collect();
+                let sorted = |entries: &'a [Entry]| {
+                    let mut v: Vec<&Entry> = entries.iter().filter(|e| e.category == category).collect();
+                    self.sort.apply(&mut v);
+                    v
+                };
+                let rows: Vec<Row> =
+                    sorted(&self.plan.entries).into_iter().map(|e| row(e, self.selected.contains(&e.id))).collect();
                 let skipped: Vec<Skip> =
                     self.plan.skipped.iter().filter(|s| s.category == category).cloned().collect();
-                let report_only: Vec<Row> = self
-                    .plan
-                    .report_only
-                    .iter()
-                    .filter(|e| e.category == category)
-                    .map(|e| row(e, false))
-                    .collect();
+                let report_only: Vec<Row> = sorted(&self.plan.report_only).into_iter().map(|e| row(e, false)).collect();
                 if rows.is_empty() && skipped.is_empty() && report_only.is_empty() {
                     return None;
                 }

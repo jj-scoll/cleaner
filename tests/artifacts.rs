@@ -199,6 +199,9 @@ fn stale_project_selected_active_not() {
     let new = entry_for(&out, "new");
     assert!(!new.selected);
     assert!(new.reason.contains("active 2 days ago"), "{}", new.reason);
+    // The Age sort uses the same clock as the reason.
+    let days = |e: &Entry| (now() - e.last_active.expect("an age")) / 86_400;
+    assert_eq!((days(old), days(new)), (40, 2));
 }
 
 /// Age is mtime (spec: something reads every file, so atime is useless).

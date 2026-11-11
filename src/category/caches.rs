@@ -143,6 +143,7 @@ fn uv_prune_entry(ctx: &ScanCtx) -> Result<Entry, String> {
         selected: true,
         permanent: false,
         note: Some(note),
+        last_active: None,
     })
 }
 
@@ -207,6 +208,7 @@ fn go_modcache_entry(ctx: &ScanCtx) -> Result<Option<Entry>, String> {
         selected: false,
         permanent: false,
         note: Some("go decides what goes; size is the whole cache".into()),
+        last_active: None,
     }))
 }
 
@@ -288,5 +290,6 @@ fn item(path: &Path, reason: &str, selected: bool, seen: &mut InodeSet) -> Optio
         selected,
         permanent: false,
         note: None,
+        last_active: None,
     })
 }

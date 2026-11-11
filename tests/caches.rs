@@ -210,6 +210,7 @@ fn uv_entry() -> Entry {
         selected: true,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 
@@ -529,6 +530,7 @@ fn go_entry() -> Entry {
         selected: false,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 

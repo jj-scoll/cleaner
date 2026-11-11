@@ -224,6 +224,7 @@ fn entry(title: String, obj: Object, bytes: u64, reason: String, selected: bool,
         selected,
         permanent: false,
         note,
+        last_active: None,
     }
 }
 

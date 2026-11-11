@@ -17,7 +17,7 @@ use cleaner::log::LogLine;
 use cleaner::plan::{Entry, EntryKind, Plan, Skip};
 use cleaner::view::dashboard::dashboard;
 use cleaner::view::history::history;
-use cleaner::view::review::ReviewModel;
+use cleaner::view::review::{ReviewModel, Sort};
 use cleaner::view::usage::{level, roots};
 use jiff::tz::TimeZone;
 use std::cell::RefCell;
@@ -36,6 +36,7 @@ fn entry(id: &str, category: &str, bytes: u64, selected: bool) -> Entry {
         selected,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 
@@ -148,6 +149,52 @@ fn review_filter_shows_one_group() {
     assert_has(&t, "Trash");
     assert!(!has(&t, "Tool caches"), "filtered page shows other categories: {t:#?}");
     assert_eq!(clean_label(&page), "Clean selected (1.0 KiB)");
+}
+
+/// Titles of the ActionRows under `w`, in display order.
+fn row_titles(w: &gtk::Widget) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(r) = w.downcast_ref::<adw::ActionRow>() {
+        out.push(r.title().to_string());
+    }
+    let mut child = w.first_child();
+    while let Some(c) = child {
+        out.extend(row_titles(&c));
+        child = c.next_sibling();
+    }
+    out
+}
+
+fn find_dropdown(w: &gtk::Widget) -> Option<gtk::DropDown> {
+    if let Some(d) = w.downcast_ref::<gtk::DropDown>() {
+        return Some(d.clone());
+    }
+    let mut child = w.first_child();
+    while let Some(c) = child {
+        if let Some(d) = find_dropdown(&c) {
+            return Some(d);
+        }
+        child = c.next_sibling();
+    }
+    None
+}
+
+fn review_sort_picker_reorders_rows() {
+    let small = Entry { title: "a small".into(), ..entry("trash:0", "trash", 1024, true) };
+    let big = Entry { title: "b big".into(), ..entry("trash:1", "trash", 4096, true) };
+    let m = model(plan(vec![small, big]));
+    let page = ReviewPage::new(m.clone(), None);
+    let picked = Rc::new(RefCell::new(Vec::new()));
+    let p = picked.clone();
+    page.connect_sort(move |s| p.borrow_mut().push(s));
+    assert_eq!(row_titles(page.page().upcast_ref()), ["b big", "a small"], "largest first");
+
+    let picker = find_dropdown(page.page().upcast_ref()).expect("a sort picker");
+    picker.set_selected(1);
+    assert_eq!(m.borrow().sort(), Sort::Name);
+    assert_eq!(row_titles(page.page().upcast_ref()), ["a small", "b big"]);
+    assert_eq!(*picked.borrow(), [Sort::Name], "the choice is reported so it can be saved");
+    assert_eq!(clean_label(&page), "Clean selected (5.0 KiB)", "re-listing keeps the selection");
 }
 
 fn log_line(run_id: &str, time: i64, title: &str) -> LogLine {
@@ -404,6 +451,7 @@ fn main() {
         ("review_toggle_updates_clean_button", review_toggle_updates_clean_button),
         ("review_marks_skipped_and_permanent", review_marks_skipped_and_permanent),
         ("review_filter_shows_one_group", review_filter_shows_one_group),
+        ("review_sort_picker_reorders_rows", review_sort_picker_reorders_rows),
         ("history_lists_runs", history_lists_runs),
         ("history_empty", history_empty),
         ("settings_read_only", settings_read_only),

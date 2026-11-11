@@ -58,6 +58,11 @@ pub struct Entry {
     pub selected: bool,
     pub permanent: bool,
     pub note: Option<String>,
+    /// Unix time the thing was last used, when the category knows better
+    /// than its folders' mtimes (a project's last edit or commit). The Age
+    /// sort uses it; plans saved before it existed load as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_active: Option<i64>,
 }
 
 impl Entry {

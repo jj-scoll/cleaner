@@ -414,7 +414,8 @@ impl Category for Artifacts {
             let file_age = newest_mtime_excluding(&p.dir, &skip_fn);
             let root = crate::git::repo_root(&p.dir);
             let commit_age = root.as_deref().and_then(crate::git::last_commit_time).unwrap_or(0);
-            let idle_secs = ctx.now - file_age.max(commit_age);
+            let last_active = file_age.max(commit_age);
+            let idle_secs = ctx.now - last_active;
             let days = idle_secs.max(0) / 86_400;
             let selected = idle_secs > cfg.stale_after_days as i64 * 86_400;
             let age_reason = if selected {
@@ -451,6 +452,7 @@ impl Category for Artifacts {
                     selected,
                     permanent: false,
                     note: None,
+                    last_active: Some(last_active),
                 });
             };
             if !ticked.0.is_empty() {
@@ -475,6 +477,7 @@ impl Category for Artifacts {
                         selected: false,
                         permanent: false,
                         note: None,
+                        last_active: None,
                     });
                 }
                 Err(e) => out.skipped.push(skip(&dir, &format!("cannot measure: {e}"))),

@@ -84,6 +84,7 @@ impl Category for AppCaches {
                         selected: true,
                         permanent: false,
                         note: note.clone(),
+                        last_active: None,
                     });
                 }
             }

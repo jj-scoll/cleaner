@@ -393,6 +393,7 @@ fn symlink_entry(path: &Path, target: &Path) -> Entry {
         selected: true,
         permanent: true,
         note: None,
+        last_active: None,
     }
 }
 

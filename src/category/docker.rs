@@ -176,6 +176,7 @@ fn object(title: String, reason: &str, bytes: u64, selected: bool, refs: Vec<Doc
         selected,
         permanent: true,
         note: None,
+        last_active: None,
     }
 }
 
@@ -351,6 +352,7 @@ impl Category for Docker {
                 selected: true,
                 permanent: true,
                 note: None,
+                last_active: None,
             });
         }
         Ok(out)

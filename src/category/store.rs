@@ -308,6 +308,7 @@ pub fn scan_stores(
                 selected: true,
                 permanent: false,
                 note: None,
+                last_active: None,
             });
         }
     }

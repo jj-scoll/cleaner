@@ -117,5 +117,6 @@ fn item(paths: &[&Path], reason: String, seen: &mut InodeSet) -> Option<Entry> {
         selected: true,
         permanent: false,
         note: None,
+        last_active: None,
     })
 }

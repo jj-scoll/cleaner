@@ -20,6 +20,7 @@ fn entry(id: &str, category: &str, bytes: u64, selected: bool) -> Entry {
         selected,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 

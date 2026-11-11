@@ -1,6 +1,7 @@
 use cleaner::category::store::{StoreRule, Unit};
-use cleaner::plan::{Entry, EntryKind, Plan, Skip};
-use cleaner::view::review::{Confirm, ReviewModel};
+use cleaner::object::Operation;
+use cleaner::plan::{Entry, EntryKind, Fingerprint, Plan, Skip, Target};
+use cleaner::view::review::{Confirm, ReviewModel, Sort};
 
 fn entry(id: &str, category: &str, bytes: u64, selected: bool) -> Entry {
     Entry {
@@ -13,6 +14,7 @@ fn entry(id: &str, category: &str, bytes: u64, selected: bool) -> Entry {
         selected,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 
@@ -237,4 +239,65 @@ fn nix_closure_rows_are_estimates_in_confirm() {
         "About 1.0 KiB will be deleted now. This cannot be undone. Nix closure sizes are estimates. \
          You'll be asked for your password for the system generations."
     );
+}
+
+/// An artifacts entry titled `title` whose targets were last touched at `mtimes`.
+fn aged(id: &str, title: &str, bytes: u64, mtimes: &[i64]) -> Entry {
+    let targets = mtimes
+        .iter()
+        .map(|&m| Target { path: format!("/p/{id}").into(), fp: Fingerprint { dev: 1, ino: 1, newest_mtime: m } })
+        .collect();
+    Entry { title: title.into(), kind: EntryKind::Item { targets }, ..entry(id, "artifacts", bytes, true) }
+}
+
+fn titles(rows: &[cleaner::view::review::Row]) -> Vec<String> {
+    rows.iter().map(|r| r.title.clone()).collect()
+}
+
+#[test]
+fn groups_sort_by_size_name_or_age() {
+    let op = Entry {
+        title: "delta".into(),
+        kind: EntryKind::Operation { op: Operation::UvCachePrune },
+        ..entry("a:3", "artifacts", 5, true)
+    };
+    let mut m = ReviewModel::new(plan(
+        vec![
+            aged("a:0", "beta", 10, &[50]),
+            aged("a:1", "Alpha", 30, &[100]),
+            // Its age is its newest target's.
+            aged("a:2", "gamma", 20, &[10, 200]),
+            op,
+        ],
+        vec![aged("r:0", "small", 1, &[0]), aged("r:1", "big", 9, &[0])],
+        vec![],
+    ));
+    assert_eq!(m.sort(), Sort::Size, "largest first by default");
+    let g = &m.groups(None)[0];
+    assert_eq!(titles(&g.rows), ["Alpha", "gamma", "beta", "delta"]);
+    assert_eq!(titles(&g.report_only), ["big", "small"]);
+    m.set_sort(Sort::Name);
+    assert_eq!(titles(&m.groups(None)[0].rows), ["Alpha", "beta", "delta", "gamma"], "A-Z, ignoring case");
+    m.set_sort(Sort::Age);
+    assert_eq!(titles(&m.groups(None)[0].rows), ["beta", "Alpha", "gamma", "delta"], "oldest first, no age last");
+}
+
+/// A category's own idea of when a thing was last used (a project's last
+/// edit or commit) wins over its folders' mtimes.
+#[test]
+fn age_sort_prefers_last_active() {
+    let fresh_folder_old_project = Entry { last_active: Some(10), ..aged("a:0", "old project", 1, &[900]) };
+    let mut m = ReviewModel::new(plan(vec![aged("a:1", "newer", 1, &[500]), fresh_folder_old_project], vec![], vec![]));
+    m.set_sort(Sort::Age);
+    assert_eq!(titles(&m.groups(None)[0].rows), ["old project", "newer"]);
+}
+
+#[test]
+fn sort_is_remembered_in_the_state_dir() {
+    let dir = tempfile::TempDir::new().unwrap();
+    assert_eq!(Sort::load(dir.path()), Sort::Size, "nothing saved yet");
+    Sort::Age.save(dir.path()).unwrap();
+    assert_eq!(Sort::load(dir.path()), Sort::Age);
+    std::fs::write(dir.path().join("review_sort"), "sideways").unwrap();
+    assert_eq!(Sort::load(dir.path()), Sort::Size, "an unknown value falls back");
 }

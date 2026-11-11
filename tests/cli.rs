@@ -362,3 +362,34 @@ fn if_low_unsaved_plan_still_exits_zero() {
     assert!(env.space_state().exists(), "{}", String::from_utf8_lossy(&out.stderr));
     assert!(!env.plans_dir().exists());
 }
+
+#[test]
+fn cli_show_sorts_largest_first_or_by_flag() {
+    let env = Env::new();
+    env.plan();
+    let src = env.plans_dir().join(format!("{}.json", env.plan_ids()[0]));
+    let mut v: serde_json::Value = serde_json::from_slice(&std::fs::read(&src).unwrap()).unwrap();
+    let entries = v["entries"].as_array_mut().unwrap();
+    entries.clear();
+    for (i, (title, bytes)) in [("bravo", 1024), ("alpha", 4096), ("charlie", 2048)].iter().enumerate() {
+        entries.push(serde_json::json!({
+            "id": format!("trash:{i}"), "category": "trash", "title": title,
+            "kind": { "Item": { "targets": [] } },
+            "bytes": bytes, "reason": "r", "selected": true, "permanent": false, "note": null
+        }));
+    }
+    std::fs::write(&src, v.to_string()).unwrap();
+    let order = |args: &[&str]| -> Vec<String> {
+        let out = env.cmd(args).assert().success().get_output().stdout.clone();
+        let out = String::from_utf8(out).unwrap();
+        let mut found: Vec<(usize, String)> = ["alpha", "bravo", "charlie"]
+            .iter()
+            .map(|t| (out.find(&format!("  {t}  ")).unwrap_or_else(|| panic!("no {t} in {out}")), t.to_string()))
+            .collect();
+        found.sort();
+        found.into_iter().map(|(_, t)| t).collect()
+    };
+    assert_eq!(order(&["show"]), ["alpha", "charlie", "bravo"]);
+    assert_eq!(order(&["show", "--sort", "name"]), ["alpha", "bravo", "charlie"]);
+    env.cmd(&["show", "--sort", "sideways"]).assert().code(2);
+}

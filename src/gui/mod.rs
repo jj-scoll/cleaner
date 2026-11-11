@@ -23,7 +23,7 @@ use crate::fsutil::usage::UsageIndex;
 use crate::paths::Paths;
 use crate::plan::{Plan, Requested, resolve_requested};
 use crate::settings::ConfigDoc;
-use crate::view::review::ReviewModel;
+use crate::view::review::{ReviewModel, Sort};
 use crate::view::usage as view_usage;
 use dashboard::DashboardPage;
 use review::{ReviewPage, confirm_dialog};
@@ -239,8 +239,15 @@ impl App {
         if let Err(e) = Plan::mark_shown(&self.paths.state_dir, &plan.id) {
             self.toast(&format!("{e:#}"));
         }
-        let model = Rc::new(RefCell::new(ReviewModel::new(plan.clone())));
-        let page = ReviewPage::new(model, filter);
+        let mut model = ReviewModel::new(plan.clone());
+        model.set_sort(Sort::load(&self.paths.state_dir));
+        let page = ReviewPage::new(Rc::new(RefCell::new(model)), filter);
+        let state_dir = self.paths.state_dir.clone();
+        page.connect_sort(move |sort| {
+            if let Err(e) = sort.save(&state_dir) {
+                eprintln!("cleaner: can't remember the sort order: {e}");
+            }
+        });
         let app = Rc::downgrade(self);
         page.connect_clean(move |ids| {
             if let Some(app) = app.upgrade() {

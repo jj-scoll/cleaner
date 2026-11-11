@@ -36,6 +36,7 @@ fn entry(kind: EntryKind, bytes: u64) -> Entry {
         selected: true,
         permanent: false,
         note: None,
+        last_active: None,
     }
 }
 

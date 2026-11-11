@@ -10,7 +10,7 @@ use crate::category::store::{StoreRule, top_matches};
 use crate::fmt::human_bytes;
 use crate::plan::EntryKind;
 use crate::view::category_label;
-use crate::view::review::{Confirm, ReviewModel, Row};
+use crate::view::review::{Confirm, ReviewModel, Row, Sort};
 
 struct Inner {
     clean_button: gtk::Button,
@@ -23,9 +23,12 @@ struct Inner {
     /// Set while `sync` writes check states, so their handlers don't react.
     syncing: Cell<bool>,
     on_clean: RefCell<Option<OnClean>>,
+    groups_box: gtk::Box,
+    on_sort: RefCell<Option<OnSort>>,
 }
 
 type OnClean = Rc<dyn Fn(Vec<String>)>;
+type OnSort = Box<dyn Fn(Sort)>;
 
 /// Owns the page widget; the page owns `Inner` (see `new`), so dropping this
 /// handle after pushing the page is fine.
@@ -154,54 +157,16 @@ fn load_top_matches(row: &adw::ExpanderRow, rule: StoreRule) {
     );
 }
 
-impl ReviewPage {
-    /// The plan's groups (one category when `filter` is set) with check
-    /// buttons bound to `model`.
-    pub fn new(model: Rc<RefCell<ReviewModel>>, filter: Option<String>) -> ReviewPage {
-        let title = filter.as_deref().map_or("Review".to_string(), category_label);
-        let clean_button = gtk::Button::builder().css_classes(["suggested-action", "pill"]).build();
-        let groups_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(24)
-            .margin_top(24)
-            .margin_bottom(24)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        let clamp = adw::Clamp::builder().maximum_size(860).child(&groups_box).build();
-        let scrolled = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&clamp)
-            .vexpand(true)
-            .build();
-        clean_button.set_halign(gtk::Align::End);
-        clean_button.set_margin_start(12);
-        clean_button.set_margin_end(12);
-        // Same column (and inner margin) as the groups, so the button lines up with them.
-        let bottom = adw::Clamp::builder()
-            .maximum_size(860)
-            .margin_top(12)
-            .margin_bottom(12)
-            .child(&clean_button)
-            .build();
-        let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&adw::HeaderBar::new());
-        toolbar.set_content(Some(&scrolled));
-        toolbar.add_bottom_bar(&bottom);
-        let page = adw::NavigationPage::builder().title(&title).tag("review").child(&toolbar).build();
-
-        let inner = Rc::new(Inner {
-            clean_button: clean_button.clone(),
-            model: model.clone(),
-            filter: filter.clone(),
-            row_checks: RefCell::new(Vec::new()),
-            group_checks: RefCell::new(Vec::new()),
-            syncing: Cell::new(false),
-            on_clean: RefCell::new(None),
-        });
-        let weak = Rc::downgrade(&inner);
-
-        let groups = model.borrow().groups(filter.as_deref());
+/// (Re)builds the groups in the model's sort order, replacing any already shown.
+fn fill(inner: &Rc<Inner>) {
+    let groups_box = &inner.groups_box;
+    while let Some(child) = groups_box.first_child() {
+        groups_box.remove(&child);
+    }
+    inner.row_checks.borrow_mut().clear();
+    inner.group_checks.borrow_mut().clear();
+    let weak = Rc::downgrade(inner);
+    let groups = inner.model.borrow().groups(inner.filter.as_deref());
         for g in groups {
             let group = adw::PreferencesGroup::builder().title(&g.label).build();
             let header = gtk::Box::builder().spacing(12).valign(gtk::Align::Center).build();
@@ -227,7 +192,7 @@ impl ReviewPage {
             for r in &g.rows {
                 let check = row_check(&weak, &r.id, r.selected);
                 inner.row_checks.borrow_mut().push((r.id.clone(), check.clone()));
-                let rule = match model.borrow().plan().entries.iter().find(|e| e.id == r.id).map(|e| &e.kind) {
+                let rule = match inner.model.borrow().plan().entries.iter().find(|e| e.id == r.id).map(|e| &e.kind) {
                     Some(EntryKind::StoreRule { rule }) => Some(rule.clone()),
                     _ => None,
                 };
@@ -286,6 +251,79 @@ impl ReviewPage {
             groups_box.append(&group);
         }
 
+}
+
+impl ReviewPage {
+    /// The plan's groups (one category when `filter` is set) with check
+    /// buttons bound to `model`.
+    pub fn new(model: Rc<RefCell<ReviewModel>>, filter: Option<String>) -> ReviewPage {
+        let title = filter.as_deref().map_or("Review".to_string(), category_label);
+        let clean_button = gtk::Button::builder().css_classes(["suggested-action", "pill"]).build();
+        let groups_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(24)
+            .margin_top(24)
+            .margin_bottom(24)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        let clamp = adw::Clamp::builder().maximum_size(860).child(&groups_box).build();
+        let scrolled = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&clamp)
+            .vexpand(true)
+            .build();
+        clean_button.set_halign(gtk::Align::End);
+        clean_button.set_margin_start(12);
+        clean_button.set_margin_end(12);
+        // Same column (and inner margin) as the groups, so the button lines up with them.
+        let bottom = adw::Clamp::builder()
+            .maximum_size(860)
+            .margin_top(12)
+            .margin_bottom(12)
+            .child(&clean_button)
+            .build();
+        let picker = gtk::DropDown::from_strings(&Sort::ALL.map(Sort::label));
+        picker.set_selected(Sort::ALL.iter().position(|&s| s == model.borrow().sort()).unwrap_or(0) as u32);
+        picker.set_tooltip_text(Some("Sort each category by size, name or age (oldest first)"));
+        let sort_by = gtk::Box::builder().spacing(6).build();
+        sort_by.append(&gtk::Label::new(Some("Sort by")));
+        sort_by.append(&picker);
+        let header = adw::HeaderBar::new();
+        header.pack_end(&sort_by);
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&header);
+        toolbar.set_content(Some(&scrolled));
+        toolbar.add_bottom_bar(&bottom);
+        let page = adw::NavigationPage::builder().title(&title).tag("review").child(&toolbar).build();
+
+        let inner = Rc::new(Inner {
+            clean_button: clean_button.clone(),
+            model: model.clone(),
+            filter: filter.clone(),
+            row_checks: RefCell::new(Vec::new()),
+            group_checks: RefCell::new(Vec::new()),
+            syncing: Cell::new(false),
+            on_clean: RefCell::new(None),
+            groups_box,
+            on_sort: RefCell::new(None),
+        });
+        let weak = Rc::downgrade(&inner);
+
+        let w = weak.clone();
+        picker.connect_selected_notify(move |p| {
+            let Some(i) = w.upgrade() else { return };
+            let Some(&sort) = Sort::ALL.get(p.selected() as usize) else { return };
+            i.model.borrow_mut().set_sort(sort);
+            fill(&i);
+            sync(&i);
+            if let Some(f) = i.on_sort.borrow().as_ref() {
+                f(sort);
+            }
+        });
+
+        fill(&inner);
+
         let w = weak.clone();
         clean_button.connect_clicked(move |button| {
             let Some(i) = w.upgrade() else { return };
@@ -321,6 +359,11 @@ impl ReviewPage {
 
     pub fn clean_button(&self) -> gtk::Button {
         self.inner.clean_button.clone()
+    }
+
+    /// `f(sort)` runs when the user picks another sort order.
+    pub fn connect_sort(&self, f: impl Fn(Sort) + 'static) {
+        *self.inner.on_sort.borrow_mut() = Some(Box::new(f));
     }
 
     /// `f(ids)` runs after the confirm dialog's `Delete`, with the selected

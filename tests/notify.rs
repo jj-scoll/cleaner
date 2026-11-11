@@ -71,6 +71,7 @@ fn plan_with(bytes: u64) -> Plan {
             selected: true,
             permanent: false,
             note: None,
+            last_active: None,
         }],
         skipped: Vec::new(),
         report_only: Vec::new(),

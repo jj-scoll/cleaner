@@ -183,6 +183,7 @@ fn entry(title: String, kind: EntryKind, bytes: u64, reason: String, selected: b
         selected,
         permanent: true,
         note: None,
+        last_active: None,
     }
 }
 
