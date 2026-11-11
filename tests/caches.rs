@@ -392,7 +392,6 @@ fn default_stores_plan4() {
     let has = |p: &str, d: u64, u: &str| v.iter().any(|s| s.path == p && s.max_age_days == d && s.unit == u);
     assert!(has("~/.cache/terragrunt*/providers", 30, "depth:4"));
     assert!(has("~/.cache/tofu-plugins*", 30, "depth:4"));
-    assert!(has("~/.cache/regul8-verify/runs/*/tg-cache", 3, "depth:1"));
     assert!(v.iter().all(|s| s.path != "~/.cache/terragrunt*"));
 }
 
@@ -429,8 +428,28 @@ fn tofu_plugins_version_is_the_unit() {
     assert!(m[0].ends_with("4.25.0"));
 }
 
+/// Defaults plus the two rules a verify tool's run folder needs: its
+/// per-run tg-cache store, and keeping only the newest run.
+fn verify_tool_config() -> Config {
+    let mut config = Config::default();
+    config.caches.stores.push(cleaner::config::StoreCfg {
+        path: "~/.cache/verify-tool/runs/*/tg-cache".into(),
+        max_age_days: 3,
+        unit: "depth:1".into(),
+        glob: None,
+        min_bytes: None,
+    });
+    config.caches.keep_newest.push(KeepNewestCfg { path: "~/.cache/verify-tool/runs".into(), keep: 1 });
+    config
+}
+
+fn verify_tool_scan(home: &Path) -> cleaner::category::ScanOutput {
+    let config = verify_tool_config();
+    with_ctx(home, &config, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap()
+}
+
 fn tg_run(home: &Path, run: &str, days: u64) -> PathBuf {
-    let r = home.join(".cache/regul8-verify/runs").join(run);
+    let r = home.join(".cache/verify-tool/runs").join(run);
     mkfile(&r.join("report.md"), 100);
     mkfile(&r.join("tg-cache/emc-prod/m/x"), 1000);
     age_tree(&r, days);
@@ -442,7 +461,7 @@ fn tg_cache_store_matches_after_3_days() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path();
     let r1 = tg_run(home, "r1", 4);
-    let out = caches_scan(home);
+    let out = verify_tool_scan(home);
     let e = store_entry(&out, &r1.join("tg-cache")).expect("tg-cache entry");
     assert!(e.selected);
     assert_eq!(entry_matches(e, home), vec![r1.join("tg-cache/emc-prod")]);
@@ -450,7 +469,7 @@ fn tg_cache_store_matches_after_3_days() {
 
     let tmp = tempfile::tempdir().unwrap();
     let r1 = tg_run(tmp.path(), "r1", 2);
-    let out = caches_scan(tmp.path());
+    let out = verify_tool_scan(tmp.path());
     assert!(store_entry(&out, &r1.join("tg-cache")).is_none(), "{:?}", out.entries);
     assert!(out.entries.is_empty(), "{:?}", out.entries);
 }
@@ -461,7 +480,7 @@ fn tg_cache_not_double_listed() {
     let home = tmp.path();
     let r1 = tg_run(home, "r1", 10);
     let r2 = tg_run(home, "r2", 5);
-    let out = caches_scan(home);
+    let out = verify_tool_scan(home);
     let r1s = r1.display().to_string();
     let mentions: Vec<&Entry> = out.entries.iter().filter(|e| e.title.contains(&r1s)).collect();
     assert_eq!(mentions.len(), 1, "{:?}", out.entries);

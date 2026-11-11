@@ -194,7 +194,6 @@ pub fn default_stores() -> Vec<StoreCfg> {
     let mut v = vec![
         store("~/.cache/terragrunt*/providers", 30, "depth:4"), // <host>/<ns>/<name>/<ver>
         store("~/.cache/tofu-plugins*", 30, "depth:4"),
-        store("~/.cache/regul8-verify/runs/*/tg-cache", 3, "depth:1"),
         store("~/.cargo/registry/src/*", 90, "depth:1"),
         store("~/.cargo/registry/cache/*", 90, "files"),
         store("~/.cargo/git/checkouts", 90, "depth:1"),
@@ -302,10 +301,7 @@ impl Default for CachesCfg {
         CachesCfg {
             enabled: true,
             stores: default_stores(),
-            keep_newest: vec![KeepNewestCfg {
-                path: "~/.cache/regul8-verify/runs".into(),
-                keep: 1,
-            }],
+            keep_newest: Vec::new(),
             uv_prune: true,
             go_clean: true,
         }
@@ -463,10 +459,6 @@ pub const DEFAULT_CONFIG_TOML: &str = r#"# cleaner configuration.
 # max_age_days = 30
 # unit = "depth:4"
 # [[caches.stores]]
-# path = "~/.cache/regul8-verify/runs/*/tg-cache"
-# max_age_days = 3
-# unit = "depth:1"
-# [[caches.stores]]
 # path = "~/.cargo/registry/src/*"
 # max_age_days = 90
 # unit = "depth:1"
@@ -549,7 +541,7 @@ pub const DEFAULT_CONFIG_TOML: &str = r#"# cleaner configuration.
 #
 # Keep only the newest N children of a directory.
 # [[caches.keep_newest]]
-# path = "~/.cache/regul8-verify/runs"
+# path = "~/.cache/my-tool/runs"
 # keep = 1
 
 # User-folder rules: same fields as a cache store.

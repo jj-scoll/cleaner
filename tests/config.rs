@@ -20,9 +20,9 @@ fn missing_file_gives_defaults() {
     let home = TempDir::new().unwrap();
     let (cfg, warnings) = load(&home.path().join(".config/cleaner/config.toml")).unwrap();
     assert_eq!(cfg.artifacts.stale_after_days, 30);
-    // The plan's table (spec §5.2c) has 16 rows plus 7 one-entry-each = 23.
-    assert_eq!(default_stores().len(), 23);
-    assert_eq!(cfg.caches.stores.len(), 23);
+    // The plan's table (spec §5.2c) has 15 rows plus 7 one-entry-each = 22.
+    assert_eq!(default_stores().len(), 22);
+    assert_eq!(cfg.caches.stores.len(), 22);
     assert_eq!(cfg.user_rules[0].path, "~/Downloads");
     assert!(warnings.is_empty(), "{warnings:?}");
 }
@@ -82,7 +82,10 @@ fn default_toml_parses_to_defaults() {
 
     let uncommented = uncomment(DEFAULT_CONFIG_TOML);
     assert_ne!(uncommented, DEFAULT_CONFIG_TOML, "nothing was commented out");
-    let parsed: Config = toml::from_str(&uncommented).unwrap();
+    let mut parsed: Config = toml::from_str(&uncommented).unwrap();
+    // The template's keep_newest block is a generic example; the default list is empty.
+    assert_eq!(parsed.caches.keep_newest.len(), 1);
+    parsed.caches.keep_newest.clear();
     assert_eq!(toml::to_string(&parsed).unwrap(), want);
 
     // As written (all commented), the file loads to defaults with no warnings.
@@ -216,4 +219,13 @@ fn idle_defaults_plan4() {
     assert_eq!(c.idle_folders.min_bytes, 1 << 30);
     assert_eq!(c.idle_folders.idle_days, 90);
     assert!(c.idle_folders.enabled);
+}
+
+#[test]
+fn built_in_defaults_name_no_personal_tool() {
+    // Assembled so this file itself stays free of the name.
+    let name = format!("regul{}", 8);
+    let dumped = toml::to_string(&Config::default()).unwrap().to_lowercase();
+    assert!(!dumped.contains(&name), "Config::default() mentions {name}");
+    assert!(!DEFAULT_CONFIG_TOML.to_lowercase().contains(&name), "template mentions {name}");
 }

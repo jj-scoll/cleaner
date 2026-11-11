@@ -229,9 +229,17 @@ fn cache_child_containing_protected_not_listed() {
 fn tagged_dir_containing_store_root_denied() {
     let tmp = tempfile::tempdir().unwrap();
     let h = tmp.path();
-    mkfile(&h.join(".cache/regul8-verify/runs/a/tg-cache/x"), 10);
-    tagged(&h.join(".cache/regul8-verify"));
+    mkfile(&h.join(".cache/verify-tool/runs/a/tg-cache/x"), 10);
+    tagged(&h.join(".cache/verify-tool"));
     tagged(&h.join(".cache/other"));
-    let out = scan_with(h, Config::default());
+    let mut cfg = Config::default();
+    cfg.caches.stores.push(cleaner::config::StoreCfg {
+        path: "~/.cache/verify-tool/runs/*/tg-cache".into(),
+        max_age_days: 3,
+        unit: "depth:1".into(),
+        glob: None,
+        min_bytes: None,
+    });
+    let out = scan_with(h, cfg);
     assert_eq!(titles(&out), vec!["~/.cache/other"], "{:?}", out.entries);
 }
