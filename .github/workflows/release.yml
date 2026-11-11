@@ -1,0 +1,65 @@
+name: Release
+
+# A v* tag builds static CLI binaries and publishes them as a GitHub release.
+# Run it by hand (workflow_dispatch) to build and check the binaries without
+# publishing anything.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }} && rustup default stable
+      # The CLI only: a GTK binary links the host's GTK, so it can't ship as one file.
+      - run: cargo build --locked --release --no-default-features --target ${{ matrix.target }}
+      - name: Check the binary is static and runs
+        run: |
+          bin=target/${{ matrix.target }}/release/cleaner
+          file "$bin"
+          file "$bin" | grep -q 'statically linked'
+          "$bin" --version
+      - name: Package
+        run: |
+          name="cleaner-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/${{ matrix.target }}/release/cleaner" LICENSE README.md "$name/"
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: cleaner-*.tar.gz*
+
+  publish:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes cleaner-*
+        env:
+          GH_TOKEN: ${{ github.token }}

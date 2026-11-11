@@ -195,7 +195,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
     <h1>Delete only what you approve.</h1>
     <p class="lede">cleaner finds the disk space a developer machine wastes on build artifacts, tool caches, stale worktrees, Docker leftovers and old Nix generations. It shows you a plan. Nothing goes until you say so.</p>
     <div class="actions">
-      <a class="btn primary" href="#install">Build it</a>
+      <a class="btn primary" href="#install">Download</a>
       <a class="btn secondary" href="https://github.com/jj-scoll/cleaner">View source on GitHub</a>
     </div>
   </div>
@@ -287,7 +287,18 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
   <div class="wrap">
     <h2 class="sec">Install</h2>
     <div class="prose">
-      <p>cleaner runs on Linux with a systemd user session. It isn't packaged yet, so you build it from source with a recent stable Rust toolchain. The GUI needs GTK 4.10 and libadwaita 1.6 or newer.</p>
+      <p>cleaner runs on Linux with a systemd user session. The quickest start is the command-line version: one static file that runs on any distro, with everything but the GUI.</p>
+    </div>
+    <h3 class="sub">Download the command-line version</h3>
+<pre>v=v0.1.0 t=x86_64-unknown-linux-musl   <span class="c"># or aarch64-unknown-linux-musl</span>
+curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz
+tar xzf cleaner-$v-$t.tar.gz
+install -Dm755 cleaner-$v-$t/cleaner ~/.local/bin/cleaner</pre>
+    <h3 class="sub">Run it with Nix, GUI included</h3>
+<pre>nix run github:jj-scoll/cleaner</pre>
+    <h3 class="sub">Build from source</h3>
+    <div class="prose">
+      <p>You need a recent stable Rust toolchain. The GUI needs GTK 4.10 and libadwaita 1.6 or newer.</p>
     </div>
 <pre><span class="c"># With Nix: the flake provides GTK and libadwaita</span>
 git clone https://github.com/jj-scoll/cleaner &amp;&amp; cd cleaner
@@ -301,7 +312,9 @@ cargo build --release
 <span class="c"># CLI only, no GTK needed</span>
 cargo build --release --no-default-features</pre>
     <h3 class="sub">Turn on the nightly plan</h3>
-<pre>install -Dm755 target/release/cleaner ~/.local/bin/cleaner
+<pre><span class="c"># A source build: copy it somewhere stable first</span>
+install -Dm755 target/release/cleaner ~/.local/bin/cleaner
+
 ~/.local/bin/cleaner timer install</pre>
     <div class="prose">
       <p>This installs a nightly timer that builds a plan and notifies you, and a 10-minute low-space check. Neither one deletes anything. <code>cleaner timer uninstall</code> removes both.</p>

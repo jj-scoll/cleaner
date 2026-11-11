@@ -103,14 +103,42 @@ There is no trash and no undo: approved items are deleted for real. **The review
 
 ## Install
 
-### Requirements
+### Download the CLI
+
+Each [release](https://github.com/jj-scoll/cleaner/releases) has a single static binary for x86_64 and aarch64 Linux. It has everything but the GUI, and runs on any distro:
+
+```sh
+v=v0.1.0 t=x86_64-unknown-linux-musl   # or aarch64-unknown-linux-musl
+curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz
+curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz.sha256
+sha256sum -c cleaner-$v-$t.tar.gz.sha256
+tar xzf cleaner-$v-$t.tar.gz
+install -Dm755 cleaner-$v-$t/cleaner ~/.local/bin/cleaner
+~/.local/bin/cleaner timer install
+```
+
+Without the GUI, the nightly notification tells you to run `cleaner show` instead of opening a review window.
+
+### With Nix (GUI included)
+
+```sh
+nix run github:jj-scoll/cleaner          # try it
+nix profile install github:jj-scoll/cleaner
+cleaner timer install                    # again after every upgrade
+```
+
+The timer units point at the package's store path, so re-run `cleaner timer install` after each `nix profile upgrade`.
+
+### Build from source
+
+#### Requirements
 
 - Linux with a systemd user session (for the timers) and a freedesktop notification daemon.
 - A recent stable Rust toolchain (edition 2024).
 - For the GUI: GTK ≥ 4.10 and libadwaita ≥ 1.6, plus `pkg-config`.
 - Optional, each enabling its category: `git`, `docker`, `nix`, `uv`, `go`. A missing tool means its category is skipped, with a reason.
 
-### Build
+#### Build
 
 **With Nix** (the flake provides a dev shell with GTK and libadwaita):
 
@@ -250,7 +278,7 @@ The fixtures recreate the hazards the safety rules exist for: tracked `node_modu
 cleaner is a personal tool. It was built for, and is used daily on, one NixOS + Hyprland desktop. Nothing is hardcoded to that machine (every path comes from config), but it hasn't been tested on other setups yet.
 
 - **Linux only.** It needs `/proc`, `statvfs` and a systemd user session.
-- **No packaging yet.** There's no crate, distro package or Nix package; build from source.
+- **Packaging:** static CLI binaries on GitHub Releases and a Nix flake. There's no crate or distro package yet.
 - **Not yet:** auto-clean without approval, a treemap view, duplicate finding, deleting from the disk map.
 
 Issues and pull requests are welcome, especially reports from distros other than NixOS.
