@@ -363,6 +363,8 @@ fn main() {
         .iter()
         .any(|v| std::env::var_os(v).is_some_and(|s| !s.is_empty()));
     if !display {
+        // CI sets this so a missing display fails the run instead of passing it.
+        assert!(std::env::var_os("CLEANER_REQUIRE_GUI_TESTS").is_none(), "gui smoke: no display, but required");
         println!("gui smoke: skipped (no display)");
         return;
     }

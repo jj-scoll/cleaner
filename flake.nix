@@ -13,5 +13,10 @@
       devShells.x86_64-linux.default = pkgs.mkShell {
         packages = with pkgs; [ pkg-config gtk4 libadwaita ];
       };
+
+      # CI: the toolchain comes from nixpkgs too, plus Xvfb for the GUI tests.
+      devShells.x86_64-linux.ci = pkgs.mkShell {
+        packages = with pkgs; [ pkg-config gtk4 libadwaita cargo rustc clippy xvfb-run git ];
+      };
     };
 }

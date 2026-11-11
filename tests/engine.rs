@@ -156,6 +156,33 @@ fn second_lock_fails() {
     assert!(format!("{err:#}").contains("another cleaner run is in progress"), "{err:#}");
 }
 
+/// A process forked by another thread holds copies of every fd until it
+/// execs, the lock's fd among them; dropping the lock must still release it.
+/// The child here pauses in `pre_exec` to hold that window open.
+#[test]
+fn dropped_lock_is_free_while_a_forked_child_holds_its_fd() {
+    use std::os::unix::process::CommandExt;
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("run/cleaner.lock");
+    let held = acquire(&path).unwrap();
+    let child = std::thread::spawn(|| {
+        let mut cmd = std::process::Command::new("true");
+        // SAFETY: the closure only sleeps, which is async-signal-safe.
+        unsafe {
+            cmd.pre_exec(|| {
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+                Ok(())
+            });
+        }
+        cmd.status().unwrap();
+    });
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    drop(held);
+    let again = acquire(&path);
+    child.join().unwrap();
+    assert!(again.is_ok(), "{:#}", again.err().unwrap());
+}
+
 #[test]
 fn build_plan_reports_progress() {
     let (_tmp, ctx) = fixture();

@@ -8,7 +8,16 @@ use std::path::Path;
 /// Held for as long as this value lives; the kernel drops the lock when the
 /// file is closed, including when the process dies.
 pub struct RunLock {
-    _file: File,
+    file: File,
+}
+
+/// Unlocks explicitly: a child forked by another thread holds a copy of the
+/// fd until it execs, and the flock lives until every copy is closed, so
+/// closing ours alone could leave the lock held after the run ends.
+impl Drop for RunLock {
+    fn drop(&mut self) {
+        let _ = flock(&self.file, FlockOperation::Unlock);
+    }
 }
 
 /// Takes the lock without blocking. Fails with "another cleaner run is in
@@ -25,7 +34,7 @@ pub fn acquire(path: &Path) -> anyhow::Result<RunLock> {
         .open(path)
         .with_context(|| format!("opening lock {}", path.display()))?;
     match flock(&file, FlockOperation::NonBlockingLockExclusive) {
-        Ok(()) => Ok(RunLock { _file: file }),
+        Ok(()) => Ok(RunLock { file }),
         Err(rustix::io::Errno::WOULDBLOCK) => bail!("another cleaner run is in progress"),
         Err(e) => Err(e).with_context(|| format!("locking {}", path.display())),
     }
