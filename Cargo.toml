@@ -1,0 +1,39 @@
+[package]
+name = "cleaner"
+version = "0.1.0"
+edition = "2024"
+description = "Approve-first disk cleanup for Linux desktops: builds a plan, deletes only what you approve"
+license = "MIT"
+
+[dependencies]
+adw = { version = "0.9.2", package = "libadwaita", features = ["v1_6"], optional = true }
+anyhow = "1.0.104"
+async-channel = { version = "2.5.0", optional = true }
+clap = { version = "4.6.7", features = ["derive"] }
+futures-core = "0.3.34"
+glob = "0.3.4"
+gtk = { version = "0.11.5", package = "gtk4", features = ["v4_10"], optional = true }
+jiff = "0.2.42"
+libc = "0.2.191"
+rustix = { version = "1.1.6", features = ["fs", "process"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_ignored = "0.1.14"
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+toml = "1.2.1"
+toml_edit = "0.25.19"
+zbus = "6.2.1"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+tempfile = "3.27.0"
+
+[features]
+default = ["gui"]
+gui = ["dep:gtk", "dep:adw", "dep:async-channel"]
+
+[[test]]
+name = "gui"
+harness = false
+required-features = ["gui"]
