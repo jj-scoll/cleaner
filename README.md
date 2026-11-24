@@ -2,29 +2,15 @@
 
 **Approve-first disk cleanup for Linux desktops.** cleaner finds the junk you could regenerate in a minute (build artifacts, tool caches, stale worktrees, Docker leftovers, old Nix generations) and shows you a plan. It deletes exactly what you approve and nothing else.
 
+[![CI](https://github.com/jj-scoll/cleaner/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jj-scoll/cleaner/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust 2024](https://img.shields.io/badge/rust-2024_edition-orange.svg)
 ![Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)
 ![GTK4 + libadwaita](https://img.shields.io/badge/GUI-GTK4_%2B_libadwaita-4a86cf.svg)
 
-```text
-$ cleaner plan
-Plan 20261111T072600Z
-  artifacts        21 selected     8.1 GiB
-  worktrees        12 selected     1.1 GiB
-  caches            2 selected    23.7 GiB  (+1 report only)
-  app_caches       10 selected    10.3 GiB
-  user_rules        0 selected         0 B
-  trash             0 selected         0 B
-  idle_folders      0 selected         0 B  (+2 report only)
-  docker            0 selected         0 B
-  nix               1 selected         0 B
-Total selected: 43.3 GiB in 46 items
-Skipped: 25 (see `cleaner show`)
+![cleaner plan builds a plan, cleaner show lists every item with its reason, cleaner apply asks once and deletes only what was selected](docs/demo/demo.gif)
 
-$ cleaner show       # every item, grouped by category, with the reason it's there
-$ cleaner apply      # re-checks each item, then deletes only what's selected
-```
+<sub>Recorded against a throwaway home seeded with fake junk (`docs/demo/record.sh`).</sub>
 
 ---
 
@@ -92,6 +78,10 @@ There is no trash and no undo: approved items are deleted for real. **The review
   - a review screen with checkboxes, reasons and skipped items greyed out;
   - run history;
   - settings that edit the same `config.toml` you can edit by hand.
+
+  | Dashboard | Review |
+  |---|---|
+  | ![Dashboard: disk usage bar and an 8.7 GiB plan, by category](docs/demo/dashboard.png) | ![Review screen: checkboxes per item with sizes and reasons; an active project left unticked](docs/demo/review.png) |
 - **Disk map.** *What's using my disk*: a drill-down list over a saved index, with per-row bars, an `in plan: 3 rows · 9.1 GiB` badge that jumps to the review, and the space the index can't explain (root-owned or reserved) per filesystem. It's read-only, with no delete button.
 - **Low-space alert.** Every 10 minutes, `cleaner plan --if-low` does one `statvfs` per watched filesystem. When one drops below 10% free, it builds a plan and sends **one urgent notification**:
 
@@ -148,6 +138,9 @@ Run `cleaner timer uninstall` before the first switch if you had installed the t
 
 ### Build from source
 
+<details>
+<summary>Requirements, build commands, and installing the timers by hand</summary>
+
 #### Requirements
 
 - Linux with a systemd user session (for the timers) and a freedesktop notification daemon.
@@ -185,7 +178,7 @@ cargo build --release
 cargo build --release --no-default-features
 ```
 
-### Install the timers
+#### Install the timers
 
 ```sh
 target/release/cleaner timer install
@@ -206,6 +199,8 @@ install -Dm755 target/release/cleaner ~/.local/bin/cleaner
 ```
 
 After an upgrade, run `cleaner timer install` again to pick up new units. `cleaner timer uninstall` removes everything it wrote.
+
+</details>
 
 ## Usage
 
