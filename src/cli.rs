@@ -476,9 +476,10 @@ fn cmd_review(id: Option<String>) -> anyhow::Result<i32> {
     let mut model = ReviewModel::new(plan.clone());
     model.set_sort(Sort::load(&paths.state_dir));
     let mut app = cleaner::tui::App::new(model);
+    // Leaving without deleting exits 1, like answering no to `cleaner apply`.
     let Some(ids) = cleaner::tui::run(&mut app, &paths.state_dir)? else {
         eprintln!("Nothing deleted.");
-        return Ok(0);
+        return Ok(1);
     };
     println!("Plan {} (created {})", plan.id, local_time(plan.created));
     cleaner::sys::lower_priority();

@@ -54,8 +54,13 @@ impl Env {
 
     /// `cleaner <args>` with HOME and every XDG dir inside the temp dir.
     fn cmd(&self, args: &[&str]) -> Command {
+        Command::from_std(self.std_cmd(args))
+    }
+
+    /// `cmd` as a plain `std::process::Command`.
+    fn std_cmd(&self, args: &[&str]) -> std::process::Command {
         let home = self.home();
-        let mut c = Command::new(env!("CARGO_BIN_EXE_cleaner"));
+        let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_cleaner"));
         c.args(args)
             .env("HOME", &home)
             .env("XDG_CONFIG_HOME", home.join(".config"))
@@ -122,6 +127,105 @@ fn cli_no_args_without_display_prints_help() {
         .assert()
         .success()
         .stdout(contains("Usage:"));
+}
+
+/// Runs `cleaner <args>` with stdin, stdout and stderr on a fresh 80x24
+/// pseudo-terminal, types `keys` once `ready` appears in its output, and
+/// returns its exit code and everything it wrote.
+fn run_in_pty(env: &Env, args: &[&str], ready: &str, keys: &[u8]) -> (i32, String) {
+    use std::io::{Read, Write};
+    use std::os::fd::FromRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::time::{Duration, Instant};
+
+    // SAFETY: plain libc pty setup on a descriptor this function owns.
+    let (master, slave_name) = unsafe {
+        let fd = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(fd >= 0, "posix_openpt");
+        assert_eq!(libc::grantpt(fd), 0, "grantpt");
+        assert_eq!(libc::unlockpt(fd), 0, "unlockpt");
+        let mut name = [0 as libc::c_char; 128];
+        assert_eq!(libc::ptsname_r(fd, name.as_mut_ptr(), name.len()), 0);
+        let ws = libc::winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        assert_eq!(libc::ioctl(fd, libc::TIOCSWINSZ, &ws), 0, "TIOCSWINSZ");
+        let name = std::ffi::CStr::from_ptr(name.as_ptr());
+        (
+            std::fs::File::from_raw_fd(fd),
+            PathBuf::from(name.to_str().unwrap()),
+        )
+    };
+    let slave = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOCTTY)
+        .open(&slave_name)
+        .unwrap();
+    let mut child = env
+        .std_cmd(args)
+        .stdin(slave.try_clone().unwrap())
+        .stdout(slave.try_clone().unwrap())
+        .stderr(slave)
+        .spawn()
+        .unwrap();
+
+    let out = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut reader = master.try_clone().unwrap();
+    let sink = out.clone();
+    // Ends with EIO once the child has exited and closed the terminal.
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        while let Ok(n) = reader.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            sink.lock().unwrap().extend_from_slice(&buf[..n]);
+        }
+    });
+    let text = || String::from_utf8_lossy(&out.lock().unwrap()).into_owned();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !text().contains(ready) {
+        if Instant::now() > deadline || child.try_wait().unwrap().is_some() {
+            let _ = child.kill();
+            panic!("never saw {ready:?}; output:\n{}", text());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let mut writer = master;
+    for &k in keys {
+        writer.write_all(&[k]).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let status = loop {
+        if let Some(s) = child.try_wait().unwrap() {
+            break s;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("cleaner review did not exit; output:\n{}", text());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    std::thread::sleep(Duration::from_millis(100));
+    (status.code().expect("exit code, not a signal"), text())
+}
+
+#[test]
+fn cli_review_quit_without_deleting_exits_1() {
+    let env = Env::new();
+    env.plan();
+    // q at once; then Enter (confirmation), n (back to the list), q.
+    for keys in [&b"q"[..], &b"\rnq"[..]] {
+        let (code, out) = run_in_pty(&env, &["review"], "sort:", keys);
+        assert_eq!(code, 1, "keys {keys:?}; output:\n{out}");
+        assert!(out.contains("Nothing deleted."), "{out}");
+        assert!(env.artifact().exists());
+        assert!(env.cache_file().exists());
+    }
 }
 
 #[test]
