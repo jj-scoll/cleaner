@@ -702,13 +702,18 @@ fn stats_marks_measured_and_estimated() {
     };
     let all = row("All time");
     assert!(all.contains("8.0 GiB"), "{text}");
+    // The measured run freed 5 GiB but its items add up to 1 GiB: more than
+    // 20% apart, so the estimate is shown next to the measurement.
     assert!(
-        all.contains("(5.0 GiB measured, 3.0 GiB estimated)"),
+        all.ends_with("(5.0 GiB measured, 3.0 GiB estimated; estimate 4.0 GiB)"),
         "{text}"
     );
     assert!(row("Last 30 days").contains("8.0 GiB"), "{text}");
     assert!(row("Runs").contains('2'), "{text}");
-    assert!(row("Biggest run").contains("5.0 GiB (measured)"), "{text}");
+    assert!(
+        row("Biggest run").ends_with("5.0 GiB (measured; estimate 1.0 GiB)"),
+        "{text}"
+    );
     assert!(text.contains("Top categories (estimated"), "{text}");
     assert!(row("Tool caches").contains("2.0 GiB"), "{text}");
     assert!(
@@ -726,7 +731,12 @@ fn stats_json() {
     assert_eq!(v["runs"], 2, "{v}");
     assert_eq!(v["all_time"]["bytes"], 8 * GIB, "{v}");
     assert_eq!(v["all_time"]["measured"], 5 * GIB, "{v}");
-    assert_eq!(v["all_time"]["estimated"], 3 * GIB, "{v}");
+    assert_eq!(v["all_time"]["estimate_only"], 3 * GIB, "{v}");
+    assert_eq!(v["all_time"]["estimated"], 4 * GIB, "{v}");
+    assert_eq!(v["per_run"][1]["run_id"], "new", "{v}");
+    assert_eq!(v["per_run"][1]["measured"], 5 * GIB, "{v}");
+    assert_eq!(v["per_run"][1]["estimated"], GIB, "{v}");
+    assert_eq!(v["biggest_run"]["estimated"], GIB, "{v}");
     assert_eq!(v["biggest_run"]["run_id"], "new", "{v}");
     assert_eq!(v["biggest_run"]["basis"], "measured", "{v}");
     assert_eq!(v["categories"][0]["category"], "caches", "{v}");
@@ -751,11 +761,37 @@ fn stats_since_date() {
     assert!(
         text.lines().any(|l| l.trim_start().starts_with(&since_row)
             && l.contains("5.0 GiB")
-            && l.ends_with("(measured)")),
+            && l.ends_with("(measured; estimate 1.0 GiB)")),
         "{text}"
     );
     assert!(!text.contains("All time"), "{text}");
     assert!(!text.contains("Tool caches"), "{text}");
+}
+
+#[test]
+fn stats_hides_an_estimate_within_20_percent_of_the_measurement() {
+    let env = Env::new();
+    let t = jiff::Timestamp::now().as_second() - 86_400;
+    let run = cleaner::log::RunLine {
+        kind: "run".into(),
+        time: t,
+        run_id: "r".into(),
+        freed_by_fs: vec![cleaner::log::FsFreed {
+            fs: "/home".into(),
+            bytes: (11 * GIB / 10) as i64,
+        }],
+    };
+    let lines = [log_line("r", t, "artifacts", GIB)];
+    cleaner::log::append(&log_file(&env), &lines, Some(&run)).unwrap();
+    let out = env.cmd(&["stats"]).assert().success();
+    let text = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    assert!(
+        text.lines()
+            .any(|l| l.trim_start().starts_with("All time") && l.ends_with("1.1 GiB  (measured)")),
+        "{text}"
+    );
+    assert!(text.contains("Biggest run:"), "{text}");
+    assert!(!text.contains("estimate 1.0 GiB"), "{text}");
 }
 
 #[test]

@@ -41,11 +41,13 @@ fn run(id: &str, time: i64, deltas: &[i64]) -> Record {
     })
 }
 
-fn total(measured: u64, estimated: u64) -> Total {
+/// `estimated` is every run's item sum, measured runs' included.
+fn total(measured: u64, estimate_only: u64, estimated: u64) -> Total {
     Total {
-        bytes: measured + estimated,
+        bytes: measured + estimate_only,
         measured,
         estimated,
+        estimate_only,
     }
 }
 
@@ -72,18 +74,19 @@ fn estimated_runs_sum_deleted_bytes_only() {
         entry("A", t, "nix", "failed", 7),
     ]);
     assert_eq!(s.runs, 1);
-    assert_eq!(s.all_time, total(0, 120));
-    assert_eq!(s.this_year, total(0, 120));
-    assert_eq!(s.last_30_days, total(0, 120));
-    assert_eq!(
-        s.biggest_run,
-        Some(RunFreed {
-            run_id: "A".into(),
-            time: t,
-            bytes: 120,
-            basis: Basis::Estimated,
-        })
-    );
+    assert_eq!(s.all_time, total(0, 120, 120));
+    assert_eq!(s.this_year, total(0, 120, 120));
+    assert_eq!(s.last_30_days, total(0, 120, 120));
+    let a = RunFreed {
+        run_id: "A".into(),
+        time: t,
+        bytes: 120,
+        basis: Basis::Estimated,
+        measured: None,
+        estimated: 120,
+    };
+    assert_eq!(s.biggest_run, Some(a.clone()));
+    assert_eq!(s.per_run, vec![a]);
 }
 
 #[test]
@@ -94,7 +97,7 @@ fn measured_run_line_replaces_the_item_sum() {
         run("A", t + 5, &[300, -50]),
     ]);
     assert_eq!(s.runs, 1);
-    assert_eq!(s.all_time, total(250, 0));
+    assert_eq!(s.all_time, total(250, 0, 100));
     let big = s.biggest_run.unwrap();
     assert_eq!((big.bytes, big.basis, big.time), (250, Basis::Measured, t));
     // Categories only exist per entry: still the item sum.
@@ -115,7 +118,7 @@ fn negative_measurement_counts_as_zero() {
         run("A", t, &[-4096]),
     ]);
     // The measurement wins over the 100-byte item sum, and freed nothing.
-    assert_eq!(s.all_time, total(0, 0));
+    assert_eq!(s.all_time, total(0, 0, 100));
     assert_eq!(s.runs, 1);
     assert_eq!(s.biggest_run, None);
 }
@@ -129,7 +132,7 @@ fn measured_and_estimated_runs_add_up_separately() {
         run("new", t + DAY, &[700]),
     ]);
     assert_eq!(s.runs, 2);
-    assert_eq!(s.all_time, total(700, 1000));
+    assert_eq!(s.all_time, total(700, 1000, 1010));
     let big = s.biggest_run.unwrap();
     assert_eq!((big.run_id.as_str(), big.basis), ("old", Basis::Estimated));
 }
@@ -152,9 +155,9 @@ fn year_starts_at_local_midnight() {
         &tz,
         None,
     );
-    assert_eq!(s.all_time, total(10, 200));
-    assert_eq!(s.this_year, total(0, 200));
-    assert_eq!(s.last_30_days, total(10, 200));
+    assert_eq!(s.all_time, total(10, 200, 201));
+    assert_eq!(s.this_year, total(0, 200, 200));
+    assert_eq!(s.last_30_days, total(10, 200, 201));
 }
 
 #[test]
@@ -164,8 +167,8 @@ fn last_30_days_includes_its_first_second() {
         entry("in", now - 30 * DAY, "caches", "deleted", 1),
         entry("out", now - 30 * DAY - 1, "caches", "deleted", 2),
     ]);
-    assert_eq!(s.last_30_days, total(0, 1));
-    assert_eq!(s.all_time, total(0, 3));
+    assert_eq!(s.last_30_days, total(0, 1, 1));
+    assert_eq!(s.all_time, total(0, 3, 3));
 }
 
 #[test]
@@ -185,7 +188,7 @@ fn since_drops_earlier_records() {
     );
     assert_eq!(s.since, Some(since));
     assert_eq!(s.runs, 2);
-    assert_eq!(s.all_time, total(0, 30));
+    assert_eq!(s.all_time, total(0, 30, 30));
     assert_eq!(s.biggest_run.unwrap().run_id, "new");
     assert_eq!(
         s.categories,
@@ -336,7 +339,7 @@ fn from_log_matches_aggregate() {
     cleaner::log::append(&path, &lines, Some(&r)).unwrap();
     let s = from_log(&path, now, &TimeZone::UTC, None).unwrap();
     assert_eq!(s.runs, 1);
-    assert_eq!(s.all_time, total(4096, 0));
+    assert_eq!(s.all_time, total(4096, 0, 42));
     // The plain entry reader still sees only the entry line.
     assert_eq!(cleaner::log::read(&path, None).unwrap(), lines.to_vec());
 
@@ -358,4 +361,47 @@ fn parse_since_is_local_midnight() {
         let e = parse_since(bad, &TimeZone::UTC).unwrap_err();
         assert!(format!("{e:#}").contains("YYYY-MM-DD"), "{bad}: {e:#}");
     }
+}
+
+#[test]
+fn json_keeps_measured_and_estimated_per_run_and_in_totals() {
+    let t = ts(NOW) - 2 * DAY;
+    let s = agg(vec![
+        entry("old", t, "caches", "deleted", 1000),
+        entry("new", t + DAY, "trash", "deleted", 10),
+        run("new", t + DAY, &[700]),
+    ]);
+    let v = serde_json::to_value(&s).unwrap();
+    // bytes = measured + estimate_only; estimated sums every run's items.
+    assert_eq!(
+        v["all_time"],
+        serde_json::json!({"bytes": 1700, "measured": 700, "estimated": 1010, "estimate_only": 1000}),
+        "{v}"
+    );
+    assert_eq!(
+        v["per_run"],
+        serde_json::json!([
+            {"run_id": "old", "time": t, "bytes": 1000, "basis": "estimated",
+             "measured": null, "estimated": 1000},
+            {"run_id": "new", "time": t + DAY, "bytes": 700, "basis": "measured",
+             "measured": 700, "estimated": 10},
+        ]),
+        "{v}"
+    );
+    assert_eq!(v["biggest_run"]["estimated"], 1000, "{v}");
+    assert_eq!(v["biggest_run"]["measured"], serde_json::Value::Null, "{v}");
+}
+
+#[test]
+fn json_negative_measurement_is_zero_next_to_its_estimate() {
+    let t = ts(NOW) - DAY;
+    let s = agg(vec![
+        entry("A", t, "caches", "deleted", 100),
+        run("A", t, &[-4096]),
+    ]);
+    let v = serde_json::to_value(&s).unwrap();
+    assert_eq!(v["per_run"][0]["measured"], 0, "{v}");
+    assert_eq!(v["per_run"][0]["estimated"], 100, "{v}");
+    assert_eq!(v["all_time"]["bytes"], 0, "{v}");
+    assert_eq!(v["all_time"]["estimated"], 100, "{v}");
 }

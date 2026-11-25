@@ -216,10 +216,13 @@ fn plan4_skip_labels() {
 }
 
 fn freed(all: (u64, u64), year: (u64, u64)) -> Stats {
-    let t = |(measured, estimated): (u64, u64)| Total {
-        bytes: measured + estimated,
+    // Measured runs have item estimates too; only `estimate_only` makes the
+    // card say "estimated".
+    let t = |(measured, estimate_only): (u64, u64)| Total {
+        bytes: measured + estimate_only,
         measured,
-        estimated,
+        estimated: estimate_only + measured / 2,
+        estimate_only,
     };
     Stats {
         runs: 3,

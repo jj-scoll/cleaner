@@ -933,15 +933,26 @@ fn cmd_stats(json: bool, since: Option<&str>) -> anyhow::Result<i32> {
         }
         return Ok(0);
     }
-    let basis = |t: &Total| match (t.measured, t.estimated) {
-        (0, 0) => String::new(),
-        (_, 0) => "(measured)".into(),
-        (0, _) => "(estimated)".into(),
-        (m, e) => format!(
-            "({} measured, {} estimated)",
-            human_bytes(m),
-            human_bytes(e)
-        ),
+    // The estimate is shown next to a measurement more than 20% off it.
+    let also = |differs: bool, estimated: u64| {
+        if differs {
+            format!("; estimate {}", human_bytes(estimated))
+        } else {
+            String::new()
+        }
+    };
+    let basis = |t: &Total| {
+        let est = also(t.estimate_differs(), t.estimated);
+        match (t.measured, t.estimate_only) {
+            (0, 0) if est.is_empty() => String::new(),
+            (_, 0) => format!("(measured{est})"),
+            (0, _) if est.is_empty() => "(estimated)".into(),
+            (m, e) => format!(
+                "({} measured, {} estimated{est})",
+                human_bytes(m),
+                human_bytes(e)
+            ),
+        }
     };
     let first = match since {
         Some(d) => format!("Since {d}"),
@@ -963,9 +974,10 @@ fn cmd_stats(json: bool, since: Option<&str>) -> anyhow::Result<i32> {
             Basis::Estimated => "estimated",
         };
         println!(
-            "Biggest run: {}, {} ({word})",
+            "Biggest run: {}, {} ({word}{})",
             local_time(b.time),
-            human_bytes(b.bytes)
+            human_bytes(b.bytes),
+            also(b.estimate_differs(), b.estimated)
         );
     }
     if !s.categories.is_empty() {
@@ -983,6 +995,12 @@ fn cmd_stats(json: bool, since: Option<&str>) -> anyhow::Result<i32> {
     println!(
         "estimated: sum of the deleted items' sizes (categories, and runs logged by older versions)"
     );
+    let periods = [&s.all_time, &s.this_year, &s.last_30_days];
+    if periods.iter().any(|t| t.estimate_differs())
+        || s.biggest_run.as_ref().is_some_and(|b| b.estimate_differs())
+    {
+        println!("estimate: shown next to a measurement more than 20% away from it");
+    }
     Ok(0)
 }
 

@@ -70,7 +70,7 @@ pub fn freed_card(s: &Stats) -> Option<FreedCard> {
     if all.bytes == 0 {
         return None;
     }
-    let basis = if all.estimated == 0 {
+    let basis = if all.estimate_only == 0 {
         "Measured: free space before and after each run"
     } else if all.measured == 0 {
         "Estimated: sum of the deleted items' sizes"

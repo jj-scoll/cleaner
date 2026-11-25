@@ -3,8 +3,10 @@
 //!
 //! A run's freed bytes are *measured* when the log has its `RunLine` (free
 //! space after minus before, summed over filesystems, floored at 0), else
-//! *estimated*: the sum of its deleted entries' `bytes`. Per-category figures
-//! only exist per entry, so they are always estimates.
+//! *estimated*: the sum of its deleted entries' `bytes`. Both are kept per
+//! run and in the totals, since a measurement can miss filesystems it does
+//! not watch. Per-category figures only exist per entry, so they are always
+//! estimates.
 
 use anyhow::Context;
 use jiff::tz::TimeZone;
@@ -24,12 +26,17 @@ pub enum Basis {
     Estimated,
 }
 
-/// Freed bytes over a period; `bytes = measured + estimated`.
+/// Freed bytes over a period: `bytes = measured + estimate_only`.
 #[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Total {
+    /// The headline: each run's measurement, or its estimate without one.
     pub bytes: u64,
+    /// The measurements of the runs that have one.
     pub measured: u64,
+    /// Every run's estimate, measured or not.
     pub estimated: u64,
+    /// The estimates of the runs without a measurement.
+    pub estimate_only: u64,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -37,8 +44,13 @@ pub struct RunFreed {
     pub run_id: String,
     /// The run's earliest log time (Unix seconds).
     pub time: i64,
+    /// `measured` if the run has a measurement, else `estimated`.
     pub bytes: u64,
     pub basis: Basis,
+    /// Free space after minus before, floored at 0 (`None`: not measured).
+    pub measured: Option<u64>,
+    /// The sum of the run's deleted entries' sizes.
+    pub estimated: u64,
 }
 
 /// Deleted entries' bytes for one category (always an estimate).
@@ -60,6 +72,8 @@ pub struct Stats {
     /// Runs in the 30 days up to `now`.
     pub last_30_days: Total,
     pub biggest_run: Option<RunFreed>,
+    /// Every run in the window, oldest first (then by id).
+    pub per_run: Vec<RunFreed>,
     /// Largest first, then by id; categories that freed 0 bytes are left out.
     pub categories: Vec<CategoryFreed>,
 }
@@ -127,31 +141,39 @@ pub fn aggregate(
         ..Stats::default()
     };
     for (run_id, acc) in runs {
-        let (bytes, basis) = match acc.measured {
-            Some(m) => (m.max(0) as u64, Basis::Measured),
+        let measured = acc.measured.map(|m| m.max(0) as u64);
+        let (bytes, basis) = match measured {
+            Some(m) => (m, Basis::Measured),
             None => (acc.estimated, Basis::Estimated),
         };
-        stats.all_time.add(bytes, basis);
+        let run = RunFreed {
+            run_id,
+            time: acc.time,
+            bytes,
+            basis,
+            measured,
+            estimated: acc.estimated,
+        };
+        stats.all_time.add(&run);
         if acc.time >= year_start {
-            stats.this_year.add(bytes, basis);
+            stats.this_year.add(&run);
         }
         if acc.time >= month_start {
-            stats.last_30_days.add(bytes, basis);
+            stats.last_30_days.add(&run);
         }
         // Largest, then earliest, then by id: independent of HashMap order.
         let beats = |b: &RunFreed| {
-            (std::cmp::Reverse(bytes), acc.time, &run_id)
+            (std::cmp::Reverse(bytes), acc.time, &run.run_id)
                 < (std::cmp::Reverse(b.bytes), b.time, &b.run_id)
         };
         if bytes > 0 && stats.biggest_run.as_ref().is_none_or(beats) {
-            stats.biggest_run = Some(RunFreed {
-                run_id,
-                time: acc.time,
-                bytes,
-                basis,
-            });
+            stats.biggest_run = Some(run.clone());
         }
+        stats.per_run.push(run);
     }
+    stats
+        .per_run
+        .sort_by(|a, b| (a.time, &a.run_id).cmp(&(b.time, &b.run_id)));
     stats.categories = categories
         .into_iter()
         .filter(|(_, b)| *b > 0)
@@ -175,13 +197,33 @@ struct RunAcc {
 }
 
 impl Total {
-    fn add(&mut self, bytes: u64, basis: Basis) {
-        self.bytes = self.bytes.saturating_add(bytes);
-        match basis {
-            Basis::Measured => self.measured = self.measured.saturating_add(bytes),
-            Basis::Estimated => self.estimated = self.estimated.saturating_add(bytes),
+    fn add(&mut self, run: &RunFreed) {
+        self.bytes = self.bytes.saturating_add(run.bytes);
+        self.estimated = self.estimated.saturating_add(run.estimated);
+        match run.measured {
+            Some(m) => self.measured = self.measured.saturating_add(m),
+            None => self.estimate_only = self.estimate_only.saturating_add(run.estimated),
         }
     }
+
+    /// Whether the measured runs' measurements and estimates are more than
+    /// 20% apart (of the measurement), so the estimate is worth showing.
+    pub fn estimate_differs(&self) -> bool {
+        let measured_runs_estimate = self.estimated.saturating_sub(self.estimate_only);
+        differs(self.measured, measured_runs_estimate)
+    }
+}
+
+impl RunFreed {
+    /// Whether the run's measurement and estimate are more than 20% apart.
+    pub fn estimate_differs(&self) -> bool {
+        self.measured.is_some_and(|m| differs(m, self.estimated))
+    }
+}
+
+/// `estimated` is more than 20% of `measured` away from it.
+fn differs(measured: u64, estimated: u64) -> bool {
+    u128::from(measured.abs_diff(estimated)) * 5 > u128::from(measured)
 }
 
 /// January 1st, 00:00 of `now`'s year in `tz`, as Unix seconds.
