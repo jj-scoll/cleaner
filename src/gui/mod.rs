@@ -112,6 +112,7 @@ impl App {
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("Cleaner")
+            .icon_name(crate::APP_ID)
             .default_width(900)
             .default_height(700)
             .content(&toasts)

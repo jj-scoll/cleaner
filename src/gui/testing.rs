@@ -49,8 +49,12 @@ pub struct TestApp {
 
 impl TestApp {
     pub fn new(paths: crate::paths::Paths) -> TestApp {
+        // Each registration exports a D-Bus object under its id, so a second
+        // TestApp in the process needs an id of its own.
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let gapp = adw::Application::builder()
-            .application_id("dev.cleaner.test")
+            .application_id(format!("dev.cleaner.test{n}"))
             .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
             .build();
         gapp.register(gtk::gio::Cancellable::NONE).expect("register");
@@ -60,6 +64,11 @@ impl TestApp {
     /// `App::open_usage`: the disk map level for `path` (roots for `None`).
     pub fn open_usage(&self, path: Option<std::path::PathBuf>) {
         self.app.open_usage(path);
+    }
+
+    /// The window's icon name.
+    pub fn icon_name(&self) -> Option<String> {
+        self.app.window.icon_name().map(Into::into)
     }
 
     /// The navigation stack, bottom first.

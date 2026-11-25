@@ -81,6 +81,12 @@ impl Env {
         ]
     }
 
+    /// Where the freedesktop icon theme spec puts a user's app icon, under the
+    /// XDG_DATA_HOME that `cmd` sets.
+    fn icon_file(&self) -> PathBuf {
+        self.home().join(format!(".local/share/icons/hicolor/scalable/apps/{APP_ID}.svg"))
+    }
+
     /// `cleaner <args>` with HOME and every XDG dir inside the temp dir and
     /// the fake `systemctl` first on PATH.
     fn cmd(&self, args: &[&str]) -> Command {
@@ -157,6 +163,9 @@ fn install_writes_units_and_enables() {
     let exe = Path::new(env!("CARGO_BIN_EXE_cleaner")).canonicalize().unwrap();
     assert!(service.contains(&format!("ExecStart=\"{}\" plan --notify\n", exe.display())), "{service}");
     assert!(desktop.contains(&format!("Exec=\"{}\" gui\n", exe.display())), "{desktop}");
+    assert!(desktop.contains(&format!("\nIcon={APP_ID}\n")), "{desktop}");
+    let svg = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icon/cleaner.svg")).unwrap();
+    assert_eq!(std::fs::read(env.icon_file()).ok(), Some(svg), "{} is not the brand icon", env.icon_file().display());
     assert_eq!(
         env.calls(),
         ["--user daemon-reload", "--user enable --now cleaner.timer", "--user enable --now cleaner-space.timer"]
@@ -168,7 +177,7 @@ fn install_bad_time_writes_nothing() {
     let env = Env::new();
     env.write_config("timer_time = \"3am\"\n");
     env.cmd(&["timer", "install"]).assert().code(1).stderr(contains("HH:MM"));
-    for f in env.unit_files() {
+    for f in env.unit_files().into_iter().chain([env.icon_file()]) {
         assert!(!f.exists(), "{} written", f.display());
     }
     assert!(!env.calls_file().exists());
@@ -178,8 +187,9 @@ fn install_bad_time_writes_nothing() {
 fn uninstall_removes_units() {
     let env = Env::new();
     env.cmd(&["timer", "install"]).assert().success();
+    assert!(env.icon_file().is_file(), "{} missing", env.icon_file().display());
     env.cmd(&["timer", "uninstall"]).assert().success();
-    for f in env.unit_files() {
+    for f in env.unit_files().into_iter().chain([env.icon_file()]) {
         assert!(!f.exists(), "{} still there", f.display());
     }
     assert_eq!(env.calls().last().unwrap(), "--user daemon-reload");

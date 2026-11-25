@@ -103,11 +103,18 @@ pub fn render_desktop(exe: &Path) -> String {
          Name=Cleaner\n\
          Comment=Approve-first disk cleanup\n\
          Exec=\"{}\" gui\n\
-         Icon=edit-clear-all-symbolic\n\
+         Icon={APP_ID}\n\
          Terminal=false\n\
          Categories=System;Utility;\n",
         exe.display()
     )
+}
+
+/// The brand icon, carried in the binary so `install` can write it.
+const ICON_SVG: &str = include_str!("../assets/icon/cleaner.svg");
+
+fn icon_file(paths: &Paths) -> PathBuf {
+    paths.icon_dir.join(format!("{APP_ID}.svg"))
 }
 
 fn unit_files(paths: &Paths) -> [PathBuf; 3] {
@@ -163,7 +170,7 @@ fn systemctl(args: &[&str]) -> anyhow::Result<String> {
 }
 
 /// Renders everything first (a bad `timer_time` or `low_space.interval` writes
-/// nothing), writes the nightly service, timer and `.desktop` file, plus the
+/// nothing), writes the nightly service, timer, icon and `.desktop` file, plus the
 /// space units when `low_space.enabled`, then reloads and enables the timers.
 /// With low-space off the space timer is disabled and its files removed.
 pub fn install(paths: &Paths, config: &Config, exe: &Path) -> anyhow::Result<()> {
@@ -175,6 +182,7 @@ pub fn install(paths: &Paths, config: &Config, exe: &Path) -> anyhow::Result<()>
     let [service_path, timer_path, desktop_path] = unit_files(paths);
     write_atomic(&service_path, &render_service(exe))?;
     write_atomic(&timer_path, &timer)?;
+    write_atomic(&icon_file(paths), ICON_SVG)?;
     write_atomic(&desktop_path, &render_desktop(exe))?;
     let [space_service_path, space_timer_path] = space_files(paths);
     if config.low_space.enabled {
@@ -199,14 +207,14 @@ fn remove_space_units(paths: &Paths) -> anyhow::Result<()> {
 }
 
 /// Disables both timers (a failure, e.g. not enabled, is ignored), removes the
-/// five files if present, then reloads.
+/// six files (units, `.desktop`, icon) if present, then reloads.
 pub fn uninstall(paths: &Paths) -> anyhow::Result<()> {
     if nix_managed(paths) {
         bail!(NIX_MANAGED);
     }
     let _ = systemctl(&["disable", "--now", TIMER]);
     let _ = systemctl(&["disable", "--now", SPACE_TIMER]);
-    for f in unit_files(paths).iter().chain(space_files(paths).iter()) {
+    for f in unit_files(paths).iter().chain(space_files(paths).iter()).chain([&icon_file(paths)]) {
         remove_if_present(f)?;
     }
     systemctl(&["daemon-reload"])?;

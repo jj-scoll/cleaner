@@ -191,7 +191,7 @@ cargo build --release --no-default-features
 target/release/cleaner timer install
 ```
 
-This writes four units to `~/.config/systemd/user` and a `.desktop` file (so notifications can open the GUI), all pointing at the binary's absolute path, then enables the timers:
+This writes four units to `~/.config/systemd/user` and a `.desktop` file with its icon (so notifications can open the GUI), all pointing at the binary's absolute path, then enables the timers:
 
 | Unit | Runs | Does |
 |---|---|---|

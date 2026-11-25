@@ -14,7 +14,8 @@
         version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
         src = pkgs.lib.fileset.toSource {
           root = ./.;
-          fileset = pkgs.lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./src ./tests ];
+          # The icon is compiled into the binary (for `timer install`) and installed below.
+          fileset = pkgs.lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./src ./tests ./assets/icon/cleaner.svg ];
         };
         cargoLock.lockFile = ./Cargo.lock;
         nativeBuildInputs = with pkgs; [ pkg-config wrapGAppsHook4 copyDesktopItems ];
@@ -24,13 +25,16 @@
         preFixup = ''
           gappsWrapperArgs+=(--set CLEANER_EXE "$out/bin/cleaner")
         '';
+        postInstall = ''
+          install -Dm644 assets/icon/cleaner.svg $out/share/icons/hicolor/scalable/apps/io.github.jj_scoll.Cleaner.svg
+        '';
         desktopItems = [
           (pkgs.makeDesktopItem {
             name = "io.github.jj_scoll.Cleaner";
             desktopName = "Cleaner";
             comment = "Approve-first disk cleanup";
             exec = "cleaner gui";
-            icon = "edit-clear-all-symbolic";
+            icon = "io.github.jj_scoll.Cleaner";
             categories = [ "System" "Utility" ];
           })
         ];

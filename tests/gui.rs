@@ -441,6 +441,14 @@ fn usage_drill_pushes_distinct_pages() {
     assert!(!has(&t, "small"), "drilled page shows the parent's rows: {t:#?}");
 }
 
+/// The window names the brand icon that `timer install` and the Nix package
+/// put in the hicolor theme under the app id.
+fn window_uses_app_icon() {
+    let home = tempfile::tempdir().unwrap();
+    let app = TestApp::new(cleaner::paths::Paths::for_home(home.path()));
+    assert_eq!(app.icon_name().as_deref(), Some(cleaner::APP_ID));
+}
+
 fn main() {
     let display =["WAYLAND_DISPLAY", "DISPLAY"]
         .iter()
@@ -478,6 +486,7 @@ fn main() {
         ("usage_page_roots_level", usage_page_roots_level),
         ("dashboard_has_disk_button", dashboard_has_disk_button),
         ("usage_drill_pushes_distinct_pages", usage_drill_pushes_distinct_pages),
+        ("window_uses_app_icon", window_uses_app_icon),
     ];
     for (name, check) in checks {
         check();

@@ -17,6 +17,8 @@ pub struct Paths {
     pub systemd_user_dir: PathBuf,
     /// `$XDG_DATA_HOME/applications`: the `.desktop` file.
     pub applications_dir: PathBuf,
+    /// `$XDG_DATA_HOME/icons/hicolor/scalable/apps`: the app icon.
+    pub icon_dir: PathBuf,
 }
 
 /// An XDG base-dir variable counts only when set, non-empty and absolute
@@ -46,6 +48,7 @@ impl Paths {
             config_file: config_home.join("cleaner/config.toml"),
             systemd_user_dir: config_home.join("systemd/user"),
             applications_dir: data_home.join("applications"),
+            icon_dir: data_home.join("icons/hicolor/scalable/apps"),
             plans_dir: state_dir.join("plans"),
             log_file: state_dir.join("log.jsonl"),
             lock_file,
@@ -69,6 +72,7 @@ impl Paths {
             space_state: state_dir.join("cleaner-space.json"),
             systemd_user_dir: home.join(".config/systemd/user"),
             applications_dir: home.join(".local/share/applications"),
+            icon_dir: home.join(".local/share/icons/hicolor/scalable/apps"),
             state_dir,
         }
     }
