@@ -510,3 +510,141 @@ fn cli_show_sorts_largest_first_or_by_flag() {
     );
     env.cmd(&["show", "--sort", "sideways"]).assert().code(2);
 }
+
+fn log_file(env: &Env) -> PathBuf {
+    env.home().join(".local/state/cleaner/log.jsonl")
+}
+
+fn log_line(run: &str, time: i64, category: &str, bytes: u64) -> cleaner::log::LogLine {
+    cleaner::log::LogLine {
+        time,
+        run_id: run.into(),
+        plan_id: "P".into(),
+        entry_id: format!("{category}:0"),
+        category: category.into(),
+        title: format!("{category} item"),
+        outcome: "deleted".into(),
+        bytes,
+        detail: String::new(),
+    }
+}
+
+const GIB: u64 = 1 << 30;
+
+/// Run "old" (10 days ago): 2 GiB caches + 1 GiB trash, no run line (an older
+/// cleaner). Run "new" (2 days ago): 1 GiB artifacts, measured 5 GiB.
+fn write_stats_log(env: &Env) -> i64 {
+    let now = jiff::Timestamp::now().as_second();
+    let path = log_file(env);
+    let old = now - 10 * 86_400;
+    cleaner::log::append(
+        &path,
+        &[
+            log_line("old", old, "caches", 2 * GIB),
+            log_line("old", old, "trash", GIB),
+        ],
+        None,
+    )
+    .unwrap();
+    let new = now - 2 * 86_400;
+    let run = cleaner::log::RunLine {
+        kind: "run".into(),
+        time: new,
+        run_id: "new".into(),
+        freed_by_fs: vec![cleaner::log::FsFreed {
+            fs: "/home".into(),
+            bytes: 5 * GIB as i64,
+        }],
+    };
+    cleaner::log::append(&path, &[log_line("new", new, "artifacts", GIB)], Some(&run)).unwrap();
+    now
+}
+
+#[test]
+fn stats_without_log_says_nothing_freed() {
+    let env = Env::new();
+    env.cmd(&["stats"])
+        .assert()
+        .success()
+        .stdout(contains("Nothing freed yet"));
+    assert!(!log_file(&env).exists());
+}
+
+#[test]
+fn stats_marks_measured_and_estimated() {
+    let env = Env::new();
+    write_stats_log(&env);
+    let out = env.cmd(&["stats"]).assert().success();
+    let text = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    let row = |label: &str| {
+        text.lines()
+            .find(|l| l.trim_start().starts_with(label))
+            .unwrap_or_else(|| panic!("no {label:?} row in:\n{text}"))
+            .to_string()
+    };
+    let all = row("All time");
+    assert!(all.contains("8.0 GiB"), "{text}");
+    assert!(
+        all.contains("(5.0 GiB measured, 3.0 GiB estimated)"),
+        "{text}"
+    );
+    assert!(row("Last 30 days").contains("8.0 GiB"), "{text}");
+    assert!(row("Runs").contains('2'), "{text}");
+    assert!(row("Biggest run").contains("5.0 GiB (measured)"), "{text}");
+    assert!(text.contains("Top categories (estimated"), "{text}");
+    assert!(row("Tool caches").contains("2.0 GiB"), "{text}");
+    assert!(
+        text.contains("measured:") && text.contains("estimated:"),
+        "{text}"
+    );
+}
+
+#[test]
+fn stats_json() {
+    let env = Env::new();
+    write_stats_log(&env);
+    let out = env.cmd(&["stats", "--json"]).assert().success();
+    let v: serde_json::Value = serde_json::from_slice(&out.get_output().stdout).unwrap();
+    assert_eq!(v["runs"], 2, "{v}");
+    assert_eq!(v["all_time"]["bytes"], 8 * GIB, "{v}");
+    assert_eq!(v["all_time"]["measured"], 5 * GIB, "{v}");
+    assert_eq!(v["all_time"]["estimated"], 3 * GIB, "{v}");
+    assert_eq!(v["biggest_run"]["run_id"], "new", "{v}");
+    assert_eq!(v["biggest_run"]["basis"], "measured", "{v}");
+    assert_eq!(v["categories"][0]["category"], "caches", "{v}");
+    assert_eq!(v["since"], serde_json::Value::Null, "{v}");
+}
+
+#[test]
+fn stats_since_date() {
+    let env = Env::new();
+    let now = write_stats_log(&env);
+    let five_days_ago = jiff::Timestamp::from_second(now - 5 * 86_400)
+        .unwrap()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date()
+        .to_string();
+    let out = env
+        .cmd(&["stats", "--since", &five_days_ago])
+        .assert()
+        .success();
+    let text = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    let since_row = format!("Since {five_days_ago}");
+    assert!(
+        text.lines().any(|l| l.trim_start().starts_with(&since_row)
+            && l.contains("5.0 GiB")
+            && l.ends_with("(measured)")),
+        "{text}"
+    );
+    assert!(!text.contains("All time"), "{text}");
+    assert!(!text.contains("Tool caches"), "{text}");
+}
+
+#[test]
+fn stats_rejects_bad_since() {
+    let env = Env::new();
+    env.cmd(&["stats", "--since", "last week"])
+        .assert()
+        .failure()
+        .stderr(contains("YYYY-MM-DD"));
+}

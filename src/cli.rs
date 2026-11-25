@@ -15,8 +15,8 @@ use cleaner::notify::{DbusNotifier, gui_launch_command, notify_if_worth_it};
 use cleaner::paths::Paths;
 use cleaner::plan::{Entry, Plan};
 use cleaner::timer;
-use cleaner::view::category_order;
 use cleaner::view::review::Sort;
+use cleaner::view::{category_label, category_order};
 
 #[derive(Parser)]
 #[command(name = "cleaner", version, about = "Approve-first disk cleanup")]
@@ -84,6 +84,15 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Space freed so far: all time, this year, last 30 days, runs, top
+    /// categories and the biggest run.
+    Stats {
+        #[arg(long)]
+        json: bool,
+        /// Only runs on or after DATE (YYYY-MM-DD, local time).
+        #[arg(long, value_name = "DATE")]
+        since: Option<String>,
+    },
     /// Open the window (the default with no command when a display is available).
     Gui {
         /// Plan id to review on startup.
@@ -123,6 +132,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         Some(Cmd::Explain { path, plan, json }) => cmd_explain(&path, plan, json),
         Some(Cmd::Status { json }) => cmd_status(json),
         Some(Cmd::Log { since, json }) => cmd_log(since, json),
+        Some(Cmd::Stats { json, since }) => cmd_stats(json, since.as_deref()),
         Some(Cmd::Timer { action }) => cmd_timer(action),
     }
 }
@@ -643,6 +653,79 @@ fn cmd_log(since_days: Option<u64>, json: bool) -> anyhow::Result<i32> {
             l.title
         );
     }
+    Ok(0)
+}
+
+fn cmd_stats(json: bool, since: Option<&str>) -> anyhow::Result<i32> {
+    use cleaner::stats::{Basis, Total};
+    let paths = Paths::from_env()?;
+    let tz = jiff::tz::TimeZone::system();
+    let since_time = since
+        .map(|s| cleaner::stats::parse_since(s, &tz))
+        .transpose()
+        .context("--since")?;
+    let s = cleaner::stats::from_log(&paths.log_file, now(), &tz, since_time)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&s)?);
+        return Ok(0);
+    }
+    if s.all_time.bytes == 0 {
+        match s.runs {
+            0 => println!("Nothing freed yet."),
+            n => println!("Nothing freed yet ({} logged).", plural(n, "run")),
+        }
+        return Ok(0);
+    }
+    let basis = |t: &Total| match (t.measured, t.estimated) {
+        (0, 0) => String::new(),
+        (_, 0) => "(measured)".into(),
+        (0, _) => "(estimated)".into(),
+        (m, e) => format!(
+            "({} measured, {} estimated)",
+            human_bytes(m),
+            human_bytes(e)
+        ),
+    };
+    let first = match since {
+        Some(d) => format!("Since {d}"),
+        None => "All time".into(),
+    };
+    println!("Space freed");
+    for (label, t) in [
+        (first.as_str(), &s.all_time),
+        ("This year", &s.this_year),
+        ("Last 30 days", &s.last_30_days),
+    ] {
+        let row = format!("  {label:<18} {:>10}  {}", human_bytes(t.bytes), basis(t));
+        println!("{}", row.trim_end());
+    }
+    println!("Runs: {}", s.runs);
+    if let Some(b) = &s.biggest_run {
+        let word = match b.basis {
+            Basis::Measured => "measured",
+            Basis::Estimated => "estimated",
+        };
+        println!(
+            "Biggest run: {}, {} ({word})",
+            local_time(b.time),
+            human_bytes(b.bytes)
+        );
+    }
+    if !s.categories.is_empty() {
+        println!("Top categories (estimated):");
+        for c in s.categories.iter().take(5) {
+            println!(
+                "  {:<24} {:>10}",
+                category_label(&c.category),
+                human_bytes(c.bytes)
+            );
+        }
+    }
+    println!();
+    println!("measured: filesystem free space after minus before a run (statvfs)");
+    println!(
+        "estimated: sum of the deleted items' sizes (categories, and runs logged by older versions)"
+    );
     Ok(0)
 }
 

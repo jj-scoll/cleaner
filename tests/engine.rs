@@ -127,6 +127,63 @@ fn apply_selected_deletes_and_logs() {
     assert!(lines.iter().all(|l| l.run_id == report.run_id));
 }
 
+fn log_records(ctx: &Ctx) -> Vec<cleaner::log::Record> {
+    cleaner::log::records(&ctx.paths.log_file)
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// A run that deleted something ends with its measured statvfs deltas.
+#[test]
+fn apply_logs_measured_run_line_last() {
+    use cleaner::log::{FsFreed, Record};
+    let (_tmp, ctx) = fixture();
+    let plan = plan_for(&ctx);
+    let ids = selected_ids(&plan);
+    let report = apply_plan(&ctx, &registry(&ctx.config), &plan, &ids).unwrap();
+
+    let recs = log_records(&ctx);
+    assert_eq!(recs.len(), ids.len() + 1, "{recs:#?}");
+    let Some(Record::Run(r)) = recs.last() else {
+        panic!("last record is not a run line: {recs:#?}");
+    };
+    assert_eq!(r.kind, "run");
+    assert_eq!(r.run_id, report.run_id);
+    let want: Vec<FsFreed> = report
+        .freed_by_fs
+        .iter()
+        .map(|(fs, bytes)| FsFreed {
+            fs: fs.clone(),
+            bytes: *bytes,
+        })
+        .collect();
+    assert!(!want.is_empty());
+    assert_eq!(r.freed_by_fs, want);
+    let runs = recs.iter().filter(|r| matches!(r, Record::Run(_))).count();
+    assert_eq!(runs, 1);
+}
+
+/// Nothing deleted: the free-space delta is only noise, so no run line.
+#[test]
+fn apply_without_deletions_logs_no_run_line() {
+    use cleaner::log::Record;
+    let (tmp, ctx) = fixture();
+    let plan = plan_for(&ctx);
+    std::fs::remove_dir_all(target(tmp.path())).unwrap();
+    let id = id_of(&plan, "artifacts");
+    apply_plan(
+        &ctx,
+        &registry(&ctx.config),
+        &plan,
+        std::slice::from_ref(&id),
+    )
+    .unwrap();
+    let recs = log_records(&ctx);
+    assert_eq!(recs.len(), 1, "{recs:#?}");
+    assert!(matches!(&recs[0], Record::Entry(l) if l.outcome == "skipped"));
+}
+
 #[test]
 fn apply_skips_missing_target() {
     let (tmp, ctx) = fixture();

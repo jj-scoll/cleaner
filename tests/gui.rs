@@ -16,7 +16,7 @@ use cleaner::gui::testing::{TestApp, texts};
 use cleaner::gui::usage::UsagePage;
 use cleaner::log::LogLine;
 use cleaner::plan::{Entry, EntryKind, Plan, Skip};
-use cleaner::view::dashboard::dashboard;
+use cleaner::view::dashboard::{FreedCard, dashboard};
 use cleaner::view::history::history;
 use cleaner::view::review::{ReviewModel, Sort};
 use cleaner::view::usage::{level, roots};
@@ -726,6 +726,57 @@ fn dashboard_has_disk_button() {
     );
 }
 
+const FREED_TITLE: &str = "Freed: 84.2 GiB all time · 12.1 GiB this year";
+const MEASURED: &str = "Measured: free space before and after each run";
+
+fn dashboard_shows_freed_card() {
+    let page = DashboardPage::new();
+    let mut d = dashboard(&fs(), None, &[], &TimeZone::UTC);
+    d.freed = Some(FreedCard {
+        title: FREED_TITLE.into(),
+        basis: MEASURED.into(),
+    });
+    page.update(&d);
+    let t = texts(&page.page());
+    assert_has(&t, FREED_TITLE);
+    assert_has(&t, MEASURED);
+
+    // An update without it drops the card.
+    page.update(&dashboard(&fs(), None, &[], &TimeZone::UTC));
+    let t = texts(&page.page());
+    assert!(!t.iter().any(|s| s.starts_with("Freed:")), "{t:#?}");
+}
+
+/// The window streams the log into the card: the run line's measured bytes,
+/// not the entry's 4 KiB.
+fn window_dashboard_reads_freed_from_log() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = cleaner::paths::Paths::for_home(home.path());
+    let now = jiff::Timestamp::now().as_second();
+    let run = cleaner::log::RunLine {
+        kind: "run".into(),
+        time: now - 60,
+        run_id: "R".into(),
+        freed_by_fs: vec![cleaner::log::FsFreed {
+            fs: "/home".into(),
+            bytes: 3 * GIB as i64,
+        }],
+    };
+    cleaner::log::append(
+        &paths.log_file,
+        &[log_line("R", now - 60, "old.zip")],
+        Some(&run),
+    )
+    .unwrap();
+    let app = TestApp::new(paths);
+    let t = texts(&app.pages()[0]);
+    assert!(
+        t.iter().any(|s| s.starts_with("Freed: 3.0 GiB all time")),
+        "{t:#?}"
+    );
+    assert_has(&t, MEASURED);
+}
+
 /// Drilling pushes a second, distinct page showing the child's rows. Run under
 /// `G_DEBUG=fatal-criticals`: a duplicate page tag is a g_critical.
 fn usage_drill_pushes_distinct_pages() {
@@ -845,6 +896,11 @@ fn main() {
         ("usage_page_empty_index", usage_page_empty_index),
         ("usage_page_roots_level", usage_page_roots_level),
         ("dashboard_has_disk_button", dashboard_has_disk_button),
+        ("dashboard_shows_freed_card", dashboard_shows_freed_card),
+        (
+            "window_dashboard_reads_freed_from_log",
+            window_dashboard_reads_freed_from_log,
+        ),
         (
             "usage_drill_pushes_distinct_pages",
             usage_drill_pushes_distinct_pages,

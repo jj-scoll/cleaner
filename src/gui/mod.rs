@@ -32,7 +32,7 @@ use review::{ReviewPage, confirm_dialog};
 pub const LOCK_COPY: &str = "Another cleaner run is in progress. Try again when it finishes.";
 
 const CSS: &str = "
-.disk-card, .plan-banner { padding: 12px 16px; }
+.disk-card, .plan-banner, .freed-card { padding: 12px 16px; }
 levelbar.success block.filled { background-color: @success_bg_color; }
 levelbar.warning block.filled { background-color: @warning_bg_color; }
 levelbar.error block.filled { background-color: @error_bg_color; }
@@ -228,7 +228,16 @@ impl App {
             self.toast(&format!("{e:#}"));
             Vec::new()
         });
-        let d = crate::view::dashboard::dashboard(&fs, latest.as_ref(), &log, &TimeZone::system());
+        let tz = TimeZone::system();
+        let mut d = crate::view::dashboard::dashboard(&fs, latest.as_ref(), &log, &tz);
+        let now = jiff::Timestamp::now().as_second();
+        d.freed = match crate::stats::from_log(&self.paths.log_file, now, &tz, None) {
+            Ok(s) => crate::view::dashboard::freed_card(&s),
+            Err(e) => {
+                self.toast(&format!("{e:#}"));
+                None
+            }
+        };
         self.dashboard.update(&d);
         *self.latest.borrow_mut() = latest;
     }

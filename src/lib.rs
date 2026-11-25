@@ -18,6 +18,7 @@ pub mod procs;
 pub mod protect;
 pub mod settings;
 pub mod space;
+pub mod stats;
 pub mod sys;
 pub mod timer;
 pub mod tool;

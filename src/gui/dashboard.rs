@@ -1,5 +1,5 @@
 //! The dashboard page (mockup A): disk cards, the latest-plan banner, the
-//! plan's categories and the last run.
+//! plan's categories, space freed so far and the last run.
 
 use adw::prelude::*;
 use gtk::gio;
@@ -23,6 +23,7 @@ struct Inner {
     disks: gtk::Box,
     banner: gtk::Box,
     categories: gtk::Box,
+    freed: gtk::Box,
     last_run: gtk::Label,
     on_review: Callback<Option<String>>,
     on_clean_all: Callback<()>,
@@ -105,6 +106,8 @@ impl DashboardPage {
         disk_button.add_css_class("flat");
         let banner = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let categories = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let freed = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        freed.set_visible(false);
         let last_run = label("", &["dim-label", "caption"]);
         last_run.set_visible(false);
 
@@ -122,6 +125,7 @@ impl DashboardPage {
             disk_button.upcast_ref(),
             banner.upcast_ref(),
             categories.upcast_ref(),
+            freed.upcast_ref(),
             last_run.upcast_ref(),
         ] {
             content.append(w);
@@ -155,6 +159,7 @@ impl DashboardPage {
             disks,
             banner,
             categories,
+            freed,
             last_run,
             on_review: RefCell::new(None),
             on_clean_all: RefCell::new(None),
@@ -172,7 +177,7 @@ impl DashboardPage {
         self.inner.page.clone()
     }
 
-    /// Rebuilds the disk cards, banner, category rows and last-run line.
+    /// Rebuilds the disk cards, banner, category rows, freed card and last-run line.
     pub fn update(&self, d: &Dashboard) {
         let i = &self.inner;
         let weak = Rc::downgrade(i);
@@ -275,6 +280,18 @@ impl DashboardPage {
             }
             i.categories.append(&group);
         }
+
+        clear(&i.freed);
+        if let Some(f) = &d.freed {
+            let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            card.add_css_class("card");
+            card.add_css_class("freed-card");
+            card.append(&label(&f.title, &["heading"]));
+            card.append(&label(&f.basis, &["dim-label", "caption"]));
+            i.freed.append(&card);
+        }
+        // Hidden, it takes no spacing slot in `content`.
+        i.freed.set_visible(d.freed.is_some());
 
         i.last_run.set_label(d.last_run.as_deref().unwrap_or(""));
         i.last_run.set_visible(d.last_run.is_some());

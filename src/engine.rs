@@ -20,7 +20,7 @@ use crate::category::worktrees::Worktrees;
 use crate::category::{Category, Outcome, ScanCtx};
 use crate::config::Config;
 use crate::fsutil::measure::InodeSet;
-use crate::log::LogLine;
+use crate::log::{FsFreed, LogLine, RunLine};
 use crate::paths::Paths;
 use crate::plan::{Entry, Plan, Skip};
 use crate::protect::Protector;
@@ -324,14 +324,30 @@ pub fn apply_plan_with(
     });
 
     let after = crate::disk::usage(&fs_paths);
-    let freed_by_fs = before
+    let freed_by_fs: Vec<(String, i64)> = before
         .iter()
         .filter_map(|b| {
             let a = after.iter().find(|a| a.label == b.label)?;
             Some((b.label.clone(), a.avail as i64 - b.avail as i64))
         })
         .collect();
-    crate::log::append(&ctx.paths.log_file, &lines)?;
+    // With nothing deleted (or nothing measured) the delta is only noise.
+    let run =
+        (lines.iter().any(|l| l.outcome == "deleted") && !freed_by_fs.is_empty()).then(|| {
+            RunLine {
+                kind: "run".into(),
+                time: jiff::Timestamp::now().as_second(),
+                run_id: run_id.clone(),
+                freed_by_fs: freed_by_fs
+                    .iter()
+                    .map(|(fs, bytes)| FsFreed {
+                        fs: fs.clone(),
+                        bytes: *bytes,
+                    })
+                    .collect(),
+            }
+        });
+    crate::log::append(&ctx.paths.log_file, &lines, run.as_ref())?;
     Ok(RunReport {
         run_id,
         results,

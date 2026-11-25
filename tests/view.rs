@@ -1,7 +1,8 @@
 use cleaner::disk::FsUsage;
 use cleaner::log::LogLine;
 use cleaner::plan::{Entry, EntryKind, Plan};
-use cleaner::view::dashboard::{Banner, dashboard};
+use cleaner::stats::{Stats, Total};
+use cleaner::view::dashboard::{Banner, FreedCard, dashboard, freed_card};
 use cleaner::view::history::history;
 use cleaner::view::{Level, category_label, level_for};
 use jiff::tz::TimeZone;
@@ -212,4 +213,49 @@ fn category_order_includes_skip_only_categories() {
 fn plan4_skip_labels() {
     assert_eq!(category_label("scan_roots"), "Scan roots");
     assert_eq!(category_label("disk_map"), "Disk map");
+}
+
+fn freed(all: (u64, u64), year: (u64, u64)) -> Stats {
+    let t = |(measured, estimated): (u64, u64)| Total {
+        bytes: measured + estimated,
+        measured,
+        estimated,
+    };
+    Stats {
+        runs: 3,
+        all_time: t(all),
+        this_year: t(year),
+        last_30_days: t(year),
+        ..Stats::default()
+    }
+}
+
+#[test]
+fn freed_card_none_until_something_freed() {
+    assert_eq!(freed_card(&Stats::default()), None);
+    assert_eq!(freed_card(&freed((0, 0), (0, 0))), None);
+    assert_eq!(dashboard(&[], None, &[], &TimeZone::UTC).freed, None);
+}
+
+#[test]
+fn freed_card_text_and_basis() {
+    let (big, year) = (842 * GIB / 10, 121 * GIB / 10);
+    assert_eq!(
+        freed_card(&freed((big, 0), (year, 0))),
+        Some(FreedCard {
+            title: "Freed: 84.2 GiB all time · 12.1 GiB this year".into(),
+            basis: "Measured: free space before and after each run".into(),
+        })
+    );
+    assert_eq!(
+        freed_card(&freed((0, 2 * GIB), (0, 0))),
+        Some(FreedCard {
+            title: "Freed: 2.0 GiB all time · 0 B this year".into(),
+            basis: "Estimated: sum of the deleted items' sizes".into(),
+        })
+    );
+    assert_eq!(
+        freed_card(&freed((GIB, GIB), (GIB, 0))).unwrap().basis,
+        "Partly estimated: older runs only logged item sizes"
+    );
 }

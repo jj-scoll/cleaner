@@ -8,6 +8,7 @@ use crate::disk::FsUsage;
 use crate::fmt::{human_bytes, local_time};
 use crate::log::LogLine;
 use crate::plan::Plan;
+use crate::stats::Stats;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FsBar {
@@ -49,6 +50,41 @@ pub struct Dashboard {
     pub categories: Vec<CategoryRow>,
     /// "Last run {when} · deleted {bytes}" for the newest run.
     pub last_run: Option<String>,
+    /// Space freed so far. `dashboard` leaves it `None`; the caller sets it
+    /// from `freed_card`, since it needs the whole log streamed into `Stats`.
+    pub freed: Option<FreedCard>,
+}
+
+/// The "Freed" card: cumulative space freed by past runs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FreedCard {
+    /// "Freed: {all time} all time · {this year} this year"
+    pub title: String,
+    /// Whether those figures are measured, estimated or a mix.
+    pub basis: String,
+}
+
+/// The card for `s`, or `None` when nothing has been freed yet.
+pub fn freed_card(s: &Stats) -> Option<FreedCard> {
+    let all = &s.all_time;
+    if all.bytes == 0 {
+        return None;
+    }
+    let basis = if all.estimated == 0 {
+        "Measured: free space before and after each run"
+    } else if all.measured == 0 {
+        "Estimated: sum of the deleted items' sizes"
+    } else {
+        "Partly estimated: older runs only logged item sizes"
+    };
+    Some(FreedCard {
+        title: format!(
+            "Freed: {} all time · {} this year",
+            human_bytes(all.bytes),
+            human_bytes(s.this_year.bytes)
+        ),
+        basis: basis.into(),
+    })
 }
 
 pub fn dashboard(
@@ -128,5 +164,6 @@ pub fn dashboard(
         banner,
         categories,
         last_run,
+        freed: None,
     }
 }
