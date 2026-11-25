@@ -1,4 +1,11 @@
-# cleaner
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="cleaner" width="320">
+  </picture>
+</h1>
+
+<p align="center"><a href="https://jj-scoll.github.io/cleaner/"><b>jj-scoll.github.io/cleaner</b></a></p>
 
 **Approve-first disk cleanup for Linux desktops.** cleaner finds the junk you could regenerate in a minute (build artifacts, tool caches, stale worktrees, Docker leftovers, old Nix generations) and shows you a plan. It deletes exactly what you approve and nothing else.
 
