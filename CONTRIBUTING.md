@@ -70,7 +70,7 @@ nix build -L --no-link
 
 Without `CLEANER_REQUIRE_GUI_TESTS`, the GUI smoke test skips itself when there's no display. With it set, a missing display fails the run instead, which is what CI wants. On a desktop session you can drop `xvfb-run` and the environment variables.
 
-**Formatting.** CI doesn't check formatting, and the code isn't laid out by a default `cargo fmt`. Please don't run `cargo fmt` across the repo: it rewrites hundreds of unrelated lines. Match the style of the code around your change (lines mostly stay within 120 columns).
+**Formatting.** Run `cargo fmt --all` before you commit. CI fails on unformatted code (`cargo fmt --all --check`).
 
 ### The test suite is hermetic
 

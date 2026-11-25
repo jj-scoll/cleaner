@@ -21,7 +21,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustup default stable
+      - run: cargo fmt --all --check
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked --no-default-features
       - run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
