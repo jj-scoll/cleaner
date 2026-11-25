@@ -175,7 +175,11 @@ fn registered_after_ai_models_and_disable_able() {
         .iter()
         .position(|id| *id == "toolchains")
         .expect("registered");
-    assert_eq!(all[at - 1], "ai_models", "app_caches, ide_versions, ai_models, toolchains");
+    assert_eq!(
+        all[at - 1],
+        "ai_models",
+        "app_caches, ide_versions, ai_models, toolchains"
+    );
     let mut c = Config::default();
     c.toolchains.enabled = false;
     assert!(!ids(&c).contains(&"toolchains"));
