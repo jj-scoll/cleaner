@@ -1,0 +1,74 @@
+name: Bug report
+description: Something cleaner did, or didn't do, that it shouldn't have.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If cleaner deleted, or could delete, something that **wasn't in the plan you approved**, please don't file it here: report it privately as described in the [security policy](https://github.com/jj-scoll/cleaner/security/policy).
+
+        Before pasting output, redact any paths or names you'd rather not share.
+  - type: input
+    id: version
+    attributes:
+      label: cleaner version
+      description: Output of `cleaner --version`.
+      placeholder: cleaner 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distro and desktop
+      description: Distribution and version, plus desktop or compositor if it's a GUI or notification problem.
+      placeholder: Fedora 43, GNOME 49
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - Release binary (static CLI from GitHub Releases)
+        - Nix (nix run / nix profile)
+        - Nix (home-manager module)
+        - Built from source (with GUI)
+        - Built from source (CLI only, --no-default-features)
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      multiple: true
+      options:
+        - CLI
+        - GUI
+        - Nightly or low-space timer / notification
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran or clicked, and what cleaner did. Include any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: plan-output
+    attributes:
+      label: "`cleaner plan` / `cleaner show` output"
+      description: The relevant part of `cleaner plan` and `cleaner show [PLAN]`. For timer problems, `cleaner timer status` and `journalctl --user -u cleaner.service` (or `cleaner-space.service`) help too.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: Any settings you changed in `~/.config/cleaner/config.toml`, if relevant.
+      render: toml

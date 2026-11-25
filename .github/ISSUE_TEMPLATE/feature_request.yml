@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest a new category, rule or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        cleaner's core promise is that it deletes only what you approve. Ideas that keep that promise are the easiest to take on. The README's [Status](https://github.com/jj-scoll/cleaner#status) section lists what isn't done yet.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to clean up or do, and why doesn't cleaner handle it today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should cleaner do? For a new cache or artifact, include its path, the tool that creates it, and how to tell it's safe to delete (project marker, age, owning app).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use now, such as a `user_rules` entry, `extra_rules` or another tool.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - A new category or rule
+        - CLI
+        - GUI
+        - Timers / notifications
+        - Packaging (Nix, release binaries, distros)
+        - Other
