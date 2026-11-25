@@ -33,7 +33,7 @@ Existing tools each cover one slice: kondo does build artifacts, nh does Nix, au
 
 1. **Plan.** A scan of every enabled category writes a plan file. Each entry has its size, the reason it's there, and a fingerprint, and is either pre-selected or not. Anything skipped is listed with the reason.
 2. **Notify.** If the pre-selected total crosses a threshold (1 GiB by default), you get a desktop notification. Clicking it opens the plan.
-3. **Review.** Tick and untick in the GUI, or read it with `cleaner show`.
+3. **Review.** Tick and untick in the GUI or, without a display, in the terminal with `cleaner review`. `cleaner show` prints it.
 4. **Apply.** Every approved item is **re-validated** first: it must still exist, still not be a symlink and still match its fingerprint, and its owning app must not be running. Anything that drifted is skipped, never silently re-planned.
 5. **Log.** Every deletion and skip is appended to a JSON-lines log, along with the bytes actually freed.
 
@@ -46,6 +46,9 @@ Existing tools each cover one slice: kondo does build artifacts, nh does Nix, au
 | **Finished worktrees** | Linked git worktrees that are clean and whose branch is merged (or that git no longer knows about), removed with `git worktree remove` | After 3 idle days |
 | **Tool caches** | cargo registry and git checkouts, go-build, Go module cache, npm, bun, pip, poetry, pnpm, Playwright, Cypress, Puppeteer, thumbnails, Terragrunt/OpenTofu providers, and your own rules. `uv cache prune` is run through `uv`, because its cache is hardlinked into live venvs. | Per rule (age-based) |
 | **Browser & Electron caches** | `Cache`, `Code Cache`, `GPUCache` and Service Worker caches for Chrome, Chromium, Firefox, Slack, Teams, Discord, Claude and Cursor (add your own), plus Chromium's on-device AI model | Yes, but **skipped at apply time if the app is running** |
+| **Old IDE versions** | JetBrains `~/.cache/JetBrains` and `~/.local/share/JetBrains` version dirs older than your newest (never `~/.config/JetBrains`), and VS Code / VSCodium extension versions older than the newest that no `extensions.json` uses | After 30 days untouched (extensions: only when `extensions.json` confirms they're unused) |
+| **AI models** | Hugging Face hub repos, Ollama models (the manifest plus blobs no other model uses) and LM Studio models, one row each | Never |
+| **Toolchains and runtimes** | rustup toolchains, nvm Node versions and pyenv Pythons other than the default, the newest and any pinned by a project (`rust-toolchain`, `.python-version`); the conda package cache; Flatpak runtimes no installed app needs (user installation) | conda cache and unused Flatpak runtimes; old toolchain versions never |
 | **Docker** | Stopped containers, dangling and unused images, unused volumes, buildx builders, old build cache, planned and deleted **by ID** | Stopped containers > 7 d, dangling images, build cache > 7 d |
 | **Nix** | Old profile generations (kept by **count**, never age), dangling `result` links, idle devbox roots, a store GC, and system generations via one `pkexec` prompt | Old generations, dangling links |
 | **Folder rules** | Age/size/glob rules over any folder, e.g. `~/Downloads` files older than 90 days | Per rule |
@@ -53,6 +56,10 @@ Existing tools each cover one slice: kondo does build artifacts, nh does Nix, au
 | **Large and old** | Anything ≥ 1 GiB untouched for 90 days, with a git badge (`unpushed commits`, `no remote`, …) | **Report only. It can never be deleted from here.** |
 
 Docker and Nix deletions are permanent and are marked as such in the review screen.
+
+**AI models** are never pre-selected: file dates show when a model was downloaded, not when it was last used. Ollama blobs shared with another model are always kept. `HF_HUB_CACHE`, `HF_HOME` and `OLLAMA_MODELS` are honoured when set.
+
+**Toolchains** go through their own tool where there is one: `rustup toolchain uninstall`, `flatpak uninstall --user` and `conda clean --packages --tarballs` (only the tarballs when conda itself is gone). What a tool still uses is checked again at apply time, and each tool is skipped if it isn't installed.
 
 ## Safety
 
@@ -82,7 +89,7 @@ With holding on, apply moves files and folders into `~/.local/share/cleaner/hold
 ## Features
 
 - **GUI** (GTK4 + libadwaita):
-  - a dashboard with a usage bar per filesystem;
+  - a dashboard with a usage bar per filesystem and the space freed so far;
   - a review screen with checkboxes, reasons and skipped items greyed out;
   - run history;
   - settings that edit the same `config.toml` you can edit by hand.
@@ -97,6 +104,9 @@ With holding on, apply moves files and folders into `~/.local/share/cleaner/hold
   > A plan can free 12.0 GiB. Nothing has been deleted.
 
   It's edge-triggered: it re-arms at 15% free, or re-notifies after 6 hours if still low. Its state lives in `$XDG_RUNTIME_DIR`, so it works even when `/home` has 0 bytes free. It never deletes.
+- **Review in a terminal.** `cleaner review` is the review screen for servers and SSH sessions: ↑/↓ or j/k move, space ticks an entry, `a` a whole category, `s` sorts by size, name or age, `/` filters by title, Enter shows what will be deleted and `y` deletes; `q` or Esc leaves without deleting anything (exit code 1). With a filter on, Enter applies only the ticked entries you can see. Your ticks aren't saved to the plan file. Without a terminal (cron, pipes) use `cleaner show` and `cleaner apply`.
+- **Why is this (not) in the plan?** `cleaner explain PATH` names the plan entry, its size, reason and the rule that matched; the item that contains the path; its skip reason; or, checked live, the first reason it isn't planned (protected, tracked in git, another filesystem, missing project marker, too young, category disabled). It only reads: it never writes the plan or the log.
+- **Space freed over time.** `cleaner stats` totals what cleaner freed all time, this year and in the last 30 days, with the run count, the biggest run and the top categories. Each run keeps both the *measured* figure (free space before and after) and the *estimated* one (the sum of deleted item sizes); the headline is measured, with the estimate shown next to it when they're more than 20% apart. Runs logged before v0.3.0 only have the estimate.
 - **CLI** for everything, with `--json` output for scripting.
 
 ## Install
@@ -154,7 +164,7 @@ Run `cleaner timer uninstall` before the first switch if you had installed the t
 - Linux with a systemd user session (for the timers) and a freedesktop notification daemon.
 - A recent stable Rust toolchain (edition 2024).
 - For the GUI: GTK ≥ 4.10 and libadwaita ≥ 1.6, plus `pkg-config`.
-- Optional, each enabling its category: `git`, `docker`, `nix`, `uv`, `go`. A missing tool means its category is skipped, with a reason.
+- Optional, each enabling its category: `git`, `docker`, `nix`, `uv`, `go`, `rustup`, `conda`, `flatpak` (nvm and pyenv are found by their directories). A missing tool means its category is skipped, with a reason.
 
 #### Build
 
@@ -219,10 +229,18 @@ cleaner gui [PLAN]        # opens the GUI, optionally on a specific plan
 cleaner plan              # scan and save a plan, print a summary
 cleaner plan --json       # the same, as JSON
 cleaner show [PLAN]       # every item, grouped by category, with reasons
+cleaner review [PLAN]     # tick entries in the terminal, then apply them
 cleaner apply [PLAN]      # re-validate and delete the selected items (asks first)
 cleaner apply --only docker --only nix   # just those categories
+cleaner explain PATH      # why PATH is (or isn't) in the plan; --plan ID, --json
 cleaner status            # disk usage, the latest plan, the last run
 cleaner log               # what past runs deleted or skipped
+cleaner stats             # space freed: all time, this year, last 30 days
+cleaner stats --since 2026-01-01 --json
+
+cleaner hold list         # with [hold] on: what is held, and until when
+cleaner hold restore ID|PATH
+cleaner hold purge [--all]
 
 cleaner timer install | uninstall | status
 ```
@@ -274,6 +292,7 @@ A scan root that is a symlink is never followed. The plan tells you to add its t
 | Plans (last 10 kept) | `~/.local/state/cleaner/plans/<timestamp>.json` |
 | Run log | `~/.local/state/cleaner/log.jsonl` |
 | Disk index | `~/.local/state/cleaner/usage.json` |
+| Holding area (`[hold]` on) | `~/.local/share/cleaner/hold/<id>/` |
 | Run lock, low-space state | `$XDG_RUNTIME_DIR/cleaner.lock`, `$XDG_RUNTIME_DIR/cleaner-space.json` |
 | Units | `~/.config/systemd/user/cleaner{,-space}.{service,timer}` |
 
@@ -287,7 +306,7 @@ cargo clippy --all-targets
 
 The test suite has about 400 tests and is **hermetic**:
 - Every test runs in a temp home, never the real one.
-- Docker, Nix, uv and Go are faked behind a `Runner` trait.
+- Docker, Nix, uv, Go, rustup, conda and Flatpak are faked behind a `Runner` trait.
 - systemd and D-Bus are faked too.
 - Ownership by another user is simulated rather than created with `chown`.
 
