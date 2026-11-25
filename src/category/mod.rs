@@ -89,7 +89,9 @@ pub fn apply_targets(targets: &[Target], ctx: &ScanCtx) -> Outcome {
     if deleted_any {
         Outcome::Deleted { bytes, failures }
     } else {
-        Outcome::Skipped { reason: first_reason.unwrap_or_else(|| "nothing to delete".into()) }
+        Outcome::Skipped {
+            reason: first_reason.unwrap_or_else(|| "nothing to delete".into()),
+        }
     }
 }
 

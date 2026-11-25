@@ -81,7 +81,10 @@ fn default_toml_parses_to_defaults() {
     let want = toml::to_string(&Config::default()).unwrap();
 
     let uncommented = uncomment(DEFAULT_CONFIG_TOML);
-    assert_ne!(uncommented, DEFAULT_CONFIG_TOML, "nothing was commented out");
+    assert_ne!(
+        uncommented, DEFAULT_CONFIG_TOML,
+        "nothing was commented out"
+    );
     let mut parsed: Config = toml::from_str(&uncommented).unwrap();
     // The template's keep_newest block is a generic example; the default list is empty.
     assert_eq!(parsed.caches.keep_newest.len(), 1);
@@ -142,19 +145,36 @@ fn plan2_sections_partial() {
 #[test]
 fn plan2_defaults() {
     let cfg = Config::default();
-    assert!(cfg.worktrees.enabled && cfg.app_caches.enabled && cfg.docker.enabled && cfg.nix.enabled);
+    assert!(
+        cfg.worktrees.enabled && cfg.app_caches.enabled && cfg.docker.enabled && cfg.nix.enabled
+    );
     assert_eq!((cfg.worktrees.max_depth, cfg.worktrees.idle_days), (6, 3));
-    assert_eq!((cfg.docker.container_days, cfg.docker.build_cache_days), (7, 7));
+    assert_eq!(
+        (cfg.docker.container_days, cfg.docker.build_cache_days),
+        (7, 7)
+    );
     assert_eq!(cfg.nix.keep, 5);
     assert!(cfg.caches.uv_prune);
     assert!(cfg.caches.go_clean);
-    let names: Vec<&str> = cfg.app_caches.apps.iter().map(|a| a.name.as_str()).collect();
+    let names: Vec<&str> = cfg
+        .app_caches
+        .apps
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
     assert_eq!(
         names,
-        ["Chrome", "Chromium", "Firefox", "Slack", "Teams", "Claude", "Cursor", "Discord"]
+        [
+            "Chrome", "Chromium", "Firefox", "Slack", "Teams", "Claude", "Cursor", "Discord"
+        ]
     );
     // `claude` is Claude Code, never Claude Desktop.
-    assert!(cfg.app_caches.apps.iter().all(|a| !a.exe.iter().any(|e| e == "claude")));
+    assert!(
+        cfg.app_caches
+            .apps
+            .iter()
+            .all(|a| !a.exe.iter().any(|e| e == "claude"))
+    );
     let firefox = &cfg.app_caches.apps[2];
     assert_eq!(firefox.locks, ["~/.mozilla/firefox/*/lock"]);
 }
@@ -227,5 +247,8 @@ fn built_in_defaults_name_no_personal_tool() {
     let name = format!("regul{}", 8);
     let dumped = toml::to_string(&Config::default()).unwrap().to_lowercase();
     assert!(!dumped.contains(&name), "Config::default() mentions {name}");
-    assert!(!DEFAULT_CONFIG_TOML.to_lowercase().contains(&name), "template mentions {name}");
+    assert!(
+        !DEFAULT_CONFIG_TOML.to_lowercase().contains(&name),
+        "template mentions {name}"
+    );
 }

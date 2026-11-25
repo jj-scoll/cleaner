@@ -19,7 +19,11 @@ impl Env {
         let tmp = TempDir::new().unwrap();
         let home = tmp.path().join("home");
         let proj = home.join("proj");
-        for (f, n) in [("Cargo.toml", 10), ("src/main.rs", 10), ("target/debug/app", 50_000)] {
+        for (f, n) in [
+            ("Cargo.toml", 10),
+            ("src/main.rs", 10),
+            ("target/debug/app", 50_000),
+        ] {
             mkfile(&proj.join(f), n);
             set_age(&proj.join(f), 40);
         }
@@ -85,8 +89,11 @@ impl Env {
 
     /// Copies the newest plan as a later plan `id` (what a timer run would leave).
     fn add_newer_plan(&self, id: &str) {
-        let src = self.plans_dir().join(format!("{}.json", self.plan_ids().last().unwrap()));
-        let mut v: serde_json::Value = serde_json::from_slice(&std::fs::read(src).unwrap()).unwrap();
+        let src = self
+            .plans_dir()
+            .join(format!("{}.json", self.plan_ids().last().unwrap()));
+        let mut v: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(src).unwrap()).unwrap();
         v["id"] = id.into();
         std::fs::write(self.plans_dir().join(format!("{id}.json")), v.to_string()).unwrap();
     }
@@ -99,7 +106,10 @@ fn plan_count(dir: &Path) -> usize {
 #[test]
 fn cli_help_lists_gui() {
     let env = Env::new();
-    env.cmd(&["--help"]).assert().success().stdout(contains("gui"));
+    env.cmd(&["--help"])
+        .assert()
+        .success()
+        .stdout(contains("gui"));
 }
 
 #[test]
@@ -122,7 +132,11 @@ fn cli_plan_then_show() {
         .stdout(contains("artifacts"))
         .stdout(contains("Total selected"));
     assert!(env.home().join(".config/cleaner/config.toml").exists());
-    env.cmd(&["show"]).assert().success().stdout(contains("proj")).stdout(contains("[x]"));
+    env.cmd(&["show"])
+        .assert()
+        .success()
+        .stdout(contains("proj"))
+        .stdout(contains("[x]"));
 }
 
 #[test]
@@ -211,14 +225,19 @@ fn cli_apply_yes_deletes() {
     env.plan_and_show();
     env.cmd(&["apply", "--yes"]).assert().success();
     assert!(!env.artifact().exists());
-    env.cmd(&["log"]).assert().success().stdout(contains("deleted"));
+    env.cmd(&["log"])
+        .assert()
+        .success()
+        .stdout(contains("deleted"));
 }
 
 #[test]
 fn cli_only_filters() {
     let env = Env::new();
     env.plan_and_show();
-    env.cmd(&["apply", "--yes", "--only", "caches"]).assert().success();
+    env.cmd(&["apply", "--yes", "--only", "caches"])
+        .assert()
+        .success();
     assert!(!env.cache_file().exists());
     assert!(env.artifact().exists());
 }
@@ -230,13 +249,23 @@ fn cli_single_item_wording() {
     let env = Env::new();
     std::fs::remove_dir_all(env.home().join("proj")).unwrap();
     std::fs::remove_dir_all(env.home().join("Downloads")).unwrap();
-    env.cmd(&["plan"]).assert().success().stdout(contains(" in 1 item\n"));
+    env.cmd(&["plan"])
+        .assert()
+        .success()
+        .stdout(contains(" in 1 item\n"));
     env.cmd(&["show"])
         .assert()
         .success()
         .stdout(contains("~/.cache/pip  (1 item untouched for 30+ days)"));
-    env.cmd(&["status"]).assert().success().stdout(contains(" in 1 item)"));
-    env.cmd(&["apply"]).write_stdin("n\n").assert().code(1).stdout(contains("Delete 1 item ("));
+    env.cmd(&["status"])
+        .assert()
+        .success()
+        .stdout(contains(" in 1 item)"));
+    env.cmd(&["apply"])
+        .write_stdin("n\n")
+        .assert()
+        .code(1)
+        .stdout(contains("Delete 1 item ("));
 
     let plan: serde_json::Value = serde_json::from_slice(
         &std::fs::read(env.plans_dir().join(format!("{}.json", env.plan_ids()[0]))).unwrap(),
@@ -245,7 +274,11 @@ fn cli_single_item_wording() {
     let e = &plan["entries"][0];
     assert_eq!(e["title"], "~/.cache/pip", "{e}");
     let root = env.home().join(".cache/pip");
-    assert_eq!(e["kind"]["StoreRule"]["rule"]["root"], root.to_str().unwrap(), "{e}");
+    assert_eq!(
+        e["kind"]["StoreRule"]["rule"]["root"],
+        root.to_str().unwrap(),
+        "{e}"
+    );
 }
 
 #[test]
@@ -253,7 +286,10 @@ fn cli_bad_config_exits_nonzero() {
     let env = Env::new();
     mkfile(&env.home().join(".config/cleaner/config.toml"), 0);
     std::fs::write(env.home().join(".config/cleaner/config.toml"), "[artifacts").unwrap();
-    env.cmd(&["plan"]).assert().code(1).stderr(contains("config.toml"));
+    env.cmd(&["plan"])
+        .assert()
+        .code(1)
+        .stderr(contains("config.toml"));
     assert_eq!(plan_count(&env.plans_dir()), 0);
 }
 
@@ -261,7 +297,13 @@ fn cli_bad_config_exits_nonzero() {
 fn cli_status_json() {
     let env = Env::new();
     env.plan();
-    let out = env.cmd(&["status", "--json"]).assert().success().get_output().stdout.clone();
+    let out = env
+        .cmd(&["status", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
     let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert!(v["filesystems"].is_array(), "{v}");
     assert!(!v["filesystems"].as_array().unwrap().is_empty(), "{v}");
@@ -271,14 +313,19 @@ fn cli_status_json() {
 fn cli_plan_without_tools_skips_cleanly() {
     use predicates::prelude::PredicateBooleanExt;
     let env = Env::new();
-    env.cmd(&["plan"]).assert().success().stdout(contains("category failed").not());
+    env.cmd(&["plan"])
+        .assert()
+        .success()
+        .stdout(contains("category failed").not());
     let plan: serde_json::Value = serde_json::from_slice(
         &std::fs::read(env.plans_dir().join(format!("{}.json", env.plan_ids()[0]))).unwrap(),
     )
     .unwrap();
     let skipped = plan["skipped"].as_array().unwrap();
     assert!(
-        skipped.iter().all(|s| !s["reason"].as_str().unwrap().contains("category failed")),
+        skipped
+            .iter()
+            .all(|s| !s["reason"].as_str().unwrap().contains("category failed")),
         "{skipped:?}"
     );
 }
@@ -297,9 +344,18 @@ fn cli_show_marks_nix_generations_as_estimate() {
         "bytes": 2048, "reason": "keeping newest 5 of 11", "selected": false, "permanent": true, "note": null
     }));
     std::fs::write(&src, v.to_string()).unwrap();
-    let out = env.cmd(&["show"]).assert().success().get_output().stdout.clone();
+    let out = env
+        .cmd(&["show"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
     let out = String::from_utf8(out).unwrap();
-    let line = out.lines().find(|l| l.contains("system: generations")).expect("nix row");
+    let line = out
+        .lines()
+        .find(|l| l.contains("system: generations"))
+        .expect("nix row");
     assert!(line.contains("~2.0 KiB"), "{line}");
     assert!(line.ends_with("[estimate]"), "{line}");
 }
@@ -316,8 +372,11 @@ impl Env {
             set_age(&proj.join(f), 40);
         }
         std::fs::create_dir_all(self.home().join(".config/cleaner")).unwrap();
-        std::fs::write(self.home().join(".config/cleaner/config.toml"), format!("[low_space]\n{low_space}\n"))
-            .unwrap();
+        std::fs::write(
+            self.home().join(".config/cleaner/config.toml"),
+            format!("[low_space]\n{low_space}\n"),
+        )
+        .unwrap();
         let mut c = self.cmd(&["plan", "--if-low"]);
         c.env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent");
         c
@@ -338,20 +397,30 @@ fn if_low_quiet_when_space_ok() {
 #[test]
 fn if_low_plans_but_never_applies() {
     let env = Env::new();
-    env.if_low("percent = 100").assert().success().stderr(contains("notification failed"));
+    env.if_low("percent = 100")
+        .assert()
+        .success()
+        .stderr(contains("notification failed"));
     let ids = env.plan_ids();
     assert_eq!(ids.len(), 1);
-    let plan: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(env.plans_dir().join(format!("{}.json", ids[0]))).unwrap()).unwrap();
+    let plan: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(env.plans_dir().join(format!("{}.json", ids[0]))).unwrap(),
+    )
+    .unwrap();
     assert!(
-        plan["entries"].as_array().unwrap().iter().any(|e| e["category"] == "artifacts"
-            && e["selected"] == true
-            && e.to_string().contains("/p/target")),
+        plan["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["category"] == "artifacts"
+                && e["selected"] == true
+                && e.to_string().contains("/p/target")),
         "{plan}"
     );
     assert!(env.home().join("p/target/x").exists());
     assert!(!env.home().join(".local/state/cleaner/log.jsonl").exists());
-    let st: serde_json::Value = serde_json::from_slice(&std::fs::read(env.space_state()).unwrap()).unwrap();
+    let st: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(env.space_state()).unwrap()).unwrap();
     assert!(st.to_string().contains("\"armed\":false"), "{st}");
 
     env.if_low("percent = 100").assert().success();
@@ -370,7 +439,9 @@ fn if_low_lock_held_is_quiet() {
 #[test]
 fn if_low_disabled_does_nothing() {
     let env = Env::new();
-    env.if_low("enabled = false\npercent = 100").assert().success();
+    env.if_low("enabled = false\npercent = 100")
+        .assert()
+        .success();
     assert!(!env.plans_dir().exists());
     assert!(!env.space_state().exists());
 }
@@ -382,9 +453,18 @@ fn if_low_unsaved_plan_still_exits_zero() {
     let state_dir = env.home().join(".local/state/cleaner");
     std::fs::create_dir_all(&state_dir).unwrap();
     std::fs::set_permissions(&state_dir, std::fs::Permissions::from_mode(0o500)).unwrap();
-    let out = env.if_low("percent = 100").assert().success().get_output().clone();
+    let out = env
+        .if_low("percent = 100")
+        .assert()
+        .success()
+        .get_output()
+        .clone();
     std::fs::set_permissions(&state_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert!(env.space_state().exists(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        env.space_state().exists(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(!env.plans_dir().exists());
 }
 
@@ -396,7 +476,10 @@ fn cli_show_sorts_largest_first_or_by_flag() {
     let mut v: serde_json::Value = serde_json::from_slice(&std::fs::read(&src).unwrap()).unwrap();
     let entries = v["entries"].as_array_mut().unwrap();
     entries.clear();
-    for (i, (title, bytes)) in [("bravo", 1024), ("alpha", 4096), ("charlie", 2048)].iter().enumerate() {
+    for (i, (title, bytes)) in [("bravo", 1024), ("alpha", 4096), ("charlie", 2048)]
+        .iter()
+        .enumerate()
+    {
         entries.push(serde_json::json!({
             "id": format!("trash:{i}"), "category": "trash", "title": title,
             "kind": { "Item": { "targets": [] } },
@@ -409,12 +492,21 @@ fn cli_show_sorts_largest_first_or_by_flag() {
         let out = String::from_utf8(out).unwrap();
         let mut found: Vec<(usize, String)> = ["alpha", "bravo", "charlie"]
             .iter()
-            .map(|t| (out.find(&format!("  {t}  ")).unwrap_or_else(|| panic!("no {t} in {out}")), t.to_string()))
+            .map(|t| {
+                (
+                    out.find(&format!("  {t}  "))
+                        .unwrap_or_else(|| panic!("no {t} in {out}")),
+                    t.to_string(),
+                )
+            })
             .collect();
         found.sort();
         found.into_iter().map(|(_, t)| t).collect()
     };
     assert_eq!(order(&["show"]), ["alpha", "charlie", "bravo"]);
-    assert_eq!(order(&["show", "--sort", "name"]), ["alpha", "bravo", "charlie"]);
+    assert_eq!(
+        order(&["show", "--sort", "name"]),
+        ["alpha", "bravo", "charlie"]
+    );
     env.cmd(&["show", "--sort", "sideways"]).assert().code(2);
 }

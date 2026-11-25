@@ -79,7 +79,10 @@ fn user_rules_roundtrip() {
 /// nothing, and serde would then bring back the default ~/Downloads rule.
 #[test]
 fn removing_all_user_rules_sticks() {
-    for start in [DEFAULT_CONFIG_TOML, "[[user_rules]]\npath = \"~/Junk\"\nmax_age_days = 7\nunit = \"files\"\n"] {
+    for start in [
+        DEFAULT_CONFIG_TOML,
+        "[[user_rules]]\npath = \"~/Junk\"\nmax_age_days = 7\nunit = \"files\"\n",
+    ] {
         let dir = TempDir::new().unwrap();
         let path = write_config(&dir, start);
         let mut doc = ConfigDoc::load(&path).unwrap();
@@ -90,28 +93,49 @@ fn removing_all_user_rules_sticks() {
 
         let (loaded, _) = config::load(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
-        assert!(loaded.user_rules.is_empty(), "rules came back: {:?}\n{text}", loaded.user_rules);
+        assert!(
+            loaded.user_rules.is_empty(),
+            "rules came back: {:?}\n{text}",
+            loaded.user_rules
+        );
 
         // And a rule added afterwards is kept.
         let mut doc = ConfigDoc::load(&path).unwrap();
         let mut c = doc.config().unwrap();
-        c.user_rules.push(StoreCfg { path: "~/Junk".into(), max_age_days: 7, unit: "files".into(), glob: None, min_bytes: None });
+        c.user_rules.push(StoreCfg {
+            path: "~/Junk".into(),
+            max_age_days: 7,
+            unit: "files".into(),
+            glob: None,
+            min_bytes: None,
+        });
         doc.update(&c).unwrap();
         doc.save(&path).unwrap();
         let (loaded, _) = config::load(&path).unwrap();
-        assert_eq!(loaded.user_rules.len(), 1, "{}", fs::read_to_string(&path).unwrap());
+        assert_eq!(
+            loaded.user_rules.len(),
+            1,
+            "{}",
+            fs::read_to_string(&path).unwrap()
+        );
     }
 }
 
 #[test]
 fn validate_rejects_bad_values() {
-    let mut c = Config { timer_time: "25:00".into(), ..Config::default() };
+    let mut c = Config {
+        timer_time: "25:00".into(),
+        ..Config::default()
+    };
     c.artifacts.stale_after_days = 0;
     c.user_rules[0].path = "Downloads".into();
     let errors = validate(&c).unwrap_err();
     assert_eq!(errors.len(), 3, "{errors:?}");
     for want in ["HH:MM", "at least 1", "must start with ~/ or /"] {
-        assert!(errors.iter().any(|e| e.contains(want)), "no {want:?} in {errors:?}");
+        assert!(
+            errors.iter().any(|e| e.contains(want)),
+            "no {want:?} in {errors:?}"
+        );
     }
     assert!(validate(&Config::default()).is_ok());
 }
@@ -132,7 +156,10 @@ fn validate_rejects_folder_rules_that_cover_everything() {
         c.user_rules[0].path = path.into();
         c.user_rules[0].max_age_days = age;
         let errors = validate(&c).unwrap_err();
-        assert!(errors.iter().any(|e| e.contains(want)), "{path} {age}: no {want:?} in {errors:?}");
+        assert!(
+            errors.iter().any(|e| e.contains(want)),
+            "{path} {age}: no {want:?} in {errors:?}"
+        );
     }
     let mut c = Config::default();
     c.user_rules[0].path = "/srv/dumps/".into();
@@ -151,7 +178,11 @@ fn plan2_keys_roundtrip() {
     doc.save(&path).unwrap();
 
     let text = fs::read_to_string(&path).unwrap();
-    for comment in ["# cleaner configuration.", "# Generations kept per profile (by count), the current one included.", "# Stopped containers older than this many days."] {
+    for comment in [
+        "# cleaner configuration.",
+        "# Generations kept per profile (by count), the current one included.",
+        "# Stopped containers older than this many days.",
+    ] {
         assert!(text.contains(comment), "lost {comment:?}:\n{text}");
     }
     let (loaded, warnings) = config::load(&path).unwrap();
@@ -193,8 +224,14 @@ fn validate_plan2() {
     c.worktrees.idle_days = 0;
     let errors = validate(&c).unwrap_err();
     assert_eq!(errors.len(), 2, "{errors:?}");
-    for want in ["nix keep must be at least 1", "worktree idle_days must be at least 1"] {
-        assert!(errors.iter().any(|e| e.contains(want)), "no {want:?} in {errors:?}");
+    for want in [
+        "nix keep must be at least 1",
+        "worktree idle_days must be at least 1",
+    ] {
+        assert!(
+            errors.iter().any(|e| e.contains(want)),
+            "no {want:?} in {errors:?}"
+        );
     }
 }
 
@@ -213,7 +250,12 @@ fn save_refuses_read_only() {
     let err = doc.save(&link).unwrap_err();
     assert!(format!("{err:#}").contains("read-only"), "{err:#}");
     assert_eq!(fs::read_to_string(&target).unwrap(), DEFAULT_CONFIG_TOML);
-    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
 }
 
 #[test]
@@ -242,13 +284,24 @@ fn settings_writes_scan_roots_and_low_space() {
     doc.save(&path).unwrap();
 
     let text = fs::read_to_string(&path).unwrap();
-    let roots_at = text.find("scan_roots = [\"~\", \"/data/repos\"]").unwrap_or_else(|| panic!("{text}"));
+    let roots_at = text
+        .find("scan_roots = [\"~\", \"/data/repos\"]")
+        .unwrap_or_else(|| panic!("{text}"));
     let first_table = text.lines().position(|l| l.starts_with('[')).unwrap();
     let before: usize = text.lines().take(first_table).map(|l| l.len() + 1).sum();
-    assert!(roots_at < before, "scan_roots after the first table: {text}");
-    let low = text.split("[low_space]").nth(1).unwrap_or_else(|| panic!("{text}"));
+    assert!(
+        roots_at < before,
+        "scan_roots after the first table: {text}"
+    );
+    let low = text
+        .split("[low_space]")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{text}"));
     assert!(low.lines().any(|l| l.trim() == "percent = 8"), "{text}");
-    for l in DEFAULT_CONFIG_TOML.lines().filter(|l| l.trim_start().starts_with('#')) {
+    for l in DEFAULT_CONFIG_TOML
+        .lines()
+        .filter(|l| l.trim_start().starts_with('#'))
+    {
         assert!(text.lines().any(|t| t == l), "comment lost: {l}");
     }
     let (loaded, _) = config::load(&path).unwrap();
@@ -279,10 +332,22 @@ fn validate_rejects_bad_plan4_values() {
         f(&mut c);
         validate(&c).unwrap_err()
     };
-    assert_eq!(bad(&|c| c.scan_roots = vec![]), ["add at least one scan root"]);
-    assert_eq!(bad(&|c| c.scan_roots = vec!["storage".into()]), ["scan root \"storage\" must start with ~ or /"]);
-    assert_eq!(bad(&|c| c.low_space.percent = 0), ["low-space percent must be between 1 and 50"]);
-    assert_eq!(bad(&|c| c.low_space.percent = 51), ["low-space percent must be between 1 and 50"]);
+    assert_eq!(
+        bad(&|c| c.scan_roots = vec![]),
+        ["add at least one scan root"]
+    );
+    assert_eq!(
+        bad(&|c| c.scan_roots = vec!["storage".into()]),
+        ["scan root \"storage\" must start with ~ or /"]
+    );
+    assert_eq!(
+        bad(&|c| c.low_space.percent = 0),
+        ["low-space percent must be between 1 and 50"]
+    );
+    assert_eq!(
+        bad(&|c| c.low_space.percent = 51),
+        ["low-space percent must be between 1 and 50"]
+    );
     assert_eq!(
         bad(&|c| c.low_space.interval = "soon".into()),
         ["low-space interval: invalid interval \"soon\" (expected e.g. 10min or 1h)"]

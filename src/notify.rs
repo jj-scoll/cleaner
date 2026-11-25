@@ -43,28 +43,48 @@ impl DbusNotifier {
     /// `clickable`: attach the "Review plan" action. Pass false when there is
     /// no GUI for a click to open.
     pub fn new(clickable: bool) -> DbusNotifier {
-        DbusNotifier { signals: Mutex::new(None), clickable }
+        DbusNotifier {
+            signals: Mutex::new(None),
+            clickable,
+        }
     }
 
     fn send(&self, summary: &str, body: &str, urgency: u8) -> anyhow::Result<u32> {
         let (signals, id) = zbus::block_on(async {
-            let conn = Connection::session().await.context("connecting to the session bus")?;
+            let conn = Connection::session()
+                .await
+                .context("connecting to the session bus")?;
             let rule = MatchRule::builder()
                 .msg_type(zbus::message::Type::Signal)
                 .interface(DEST)
                 .path(PATH)
                 .build()?;
             let signals = MessageStream::for_match_rule(rule, &conn, None).await?;
-            let hints: HashMap<&str, Variant> =
-                HashMap::from([("desktop-entry", Variant::from(APP_ID)), ("urgency", Variant::from(urgency))]);
-            let actions = if self.clickable { vec!["default", "Review plan"] } else { Vec::new() };
+            let hints: HashMap<&str, Variant> = HashMap::from([
+                ("desktop-entry", Variant::from(APP_ID)),
+                ("urgency", Variant::from(urgency)),
+            ]);
+            let actions = if self.clickable {
+                vec!["default", "Review plan"]
+            } else {
+                Vec::new()
+            };
             let reply = conn
                 .call_method(
                     Some(DEST),
                     PATH,
                     Some(DEST),
                     "Notify",
-                    &("Cleaner", 0u32, "edit-clear-all-symbolic", summary, body, actions, hints, 0i32),
+                    &(
+                        "Cleaner",
+                        0u32,
+                        "edit-clear-all-symbolic",
+                        summary,
+                        body,
+                        actions,
+                        hints,
+                        0i32,
+                    ),
                 )
                 .await
                 .context("calling org.freedesktop.Notifications.Notify")?;
@@ -86,15 +106,20 @@ impl Notifier for DbusNotifier {
     }
 
     fn wait_for_click(&self, id: u32, timeout: Duration) -> anyhow::Result<bool> {
-        let mut signals =
-            self.signals.lock().unwrap().take().context("wait_for_click called before notify")?;
+        let mut signals = self
+            .signals
+            .lock()
+            .unwrap()
+            .take()
+            .context("wait_for_click called before notify")?;
         // The wait runs on its own thread so the timeout is a plain channel
         // timeout; on timeout the thread is left blocked until the process exits.
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let clicked: zbus::Result<bool> = zbus::block_on(async {
                 loop {
-                    let next = std::future::poll_fn(|cx| Pin::new(&mut signals).poll_next(cx)).await;
+                    let next =
+                        std::future::poll_fn(|cx| Pin::new(&mut signals).poll_next(cx)).await;
                     let Some(msg) = next else { return Ok(false) };
                     let msg = msg?;
                     let header = msg.header();
@@ -127,7 +152,11 @@ impl Notifier for DbusNotifier {
 /// Summary and body; the copy is fixed by the plan. `gui`: a click can open
 /// the review; without it the body points at `cleaner show`.
 pub fn notify_text(plan: &Plan, gui: bool) -> (String, String) {
-    let review = if gui { "Click to review it." } else { "Run `cleaner show` to review it." };
+    let review = if gui {
+        "Click to review it."
+    } else {
+        "Run `cleaner show` to review it."
+    };
     (
         format!("{} can be freed", human_bytes(plan.selected_bytes())),
         format!("cleaner built a plan; nothing has been deleted. {review}"),
@@ -157,7 +186,9 @@ pub fn notify_if_worth_it(
     }
     let (summary, body) = notify_text(plan, launch.is_some());
     let id = n.notify(&summary, &body)?;
-    let Some(launch) = launch else { return Ok(NotifyOutcome::Sent) };
+    let Some(launch) = launch else {
+        return Ok(NotifyOutcome::Sent);
+    };
     if n.wait_for_click(id, WAIT)? {
         launch(&plan.id);
         Ok(NotifyOutcome::Opened)
@@ -171,20 +202,40 @@ pub fn notify_if_worth_it(
 /// for `notify_text`.
 pub fn low_space_text(low: &[FsUsage], plan: Result<&Plan, String>, gui: bool) -> (String, String) {
     let first = &low[0];
-    let used = ((first.total.saturating_sub(first.avail)) as f64 * 100.0 / first.total as f64).round();
-    let summary = format!("{} is almost full: {} free ({used}% used)", first.label, human_bytes(first.avail));
+    let used =
+        ((first.total.saturating_sub(first.avail)) as f64 * 100.0 / first.total as f64).round();
+    let summary = format!(
+        "{} is almost full: {} free ({used}% used)",
+        first.label,
+        human_bytes(first.avail)
+    );
     let mut body = match plan {
         Ok(p) => {
-            let review = if gui { "" } else { " Run `cleaner show` to review it." };
-            format!("A plan can free {}. Nothing has been deleted.{review}", human_bytes(p.selected_bytes()))
+            let review = if gui {
+                ""
+            } else {
+                " Run `cleaner show` to review it."
+            };
+            format!(
+                "A plan can free {}. Nothing has been deleted.{review}",
+                human_bytes(p.selected_bytes())
+            )
         }
         Err(reason) => {
-            let next = if gui { "Open cleaner to free space." } else { "Free some space, then run `cleaner plan`." };
+            let next = if gui {
+                "Open cleaner to free space."
+            } else {
+                "Free some space, then run `cleaner plan`."
+            };
             format!("The plan could not be saved: {reason}. Nothing has been deleted. {next}")
         }
     };
     for f in &low[1..] {
-        body.push_str(&format!(" Also low: {} ({} free).", f.label, human_bytes(f.avail)));
+        body.push_str(&format!(
+            " Also low: {} ({} free).",
+            f.label,
+            human_bytes(f.avail)
+        ));
     }
     (summary, body)
 }
@@ -205,7 +256,9 @@ pub fn notify_low_space(
     let id = plan.as_ref().ok().map(|p| p.id.clone());
     let (summary, body) = low_space_text(low, plan, launch.is_some());
     let nid = n.notify_urgent(&summary, &body)?;
-    let Some(launch) = launch else { return Ok(NotifyOutcome::Sent) };
+    let Some(launch) = launch else {
+        return Ok(NotifyOutcome::Sent);
+    };
     if n.wait_for_click(nid, LOW_SPACE_WAIT)? {
         launch(id.as_deref());
         Ok(NotifyOutcome::Opened)

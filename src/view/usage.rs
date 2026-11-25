@@ -57,7 +57,15 @@ pub fn roots(index: &UsageIndex, plan: Option<&Plan>, now: i64, tz: &TimeZone) -
     let rows = index
         .trees
         .iter()
-        .map(|t| row(t.root.display().to_string(), t.root.clone(), &t.node, largest, plan))
+        .map(|t| {
+            row(
+                t.root.display().to_string(),
+                t.root.clone(),
+                &t.node,
+                largest,
+                plan,
+            )
+        })
         .collect();
     Level {
         path: None,
@@ -71,13 +79,29 @@ pub fn roots(index: &UsageIndex, plan: Option<&Plan>, now: i64, tz: &TimeZone) -
 /// Children of `path`, biggest first, then unreadable rows, then `other (n items)`.
 /// `None` if `path` isn't in the index. The footer figure is the same at every
 /// level: how much of each filesystem the index doesn't account for.
-pub fn level(index: &UsageIndex, path: &Path, plan: Option<&Plan>, now: i64, tz: &TimeZone) -> Option<Level> {
+pub fn level(
+    index: &UsageIndex,
+    path: &Path,
+    plan: Option<&Plan>,
+    now: i64,
+    tz: &TimeZone,
+) -> Option<Level> {
     let (_, node) = index.node(path)?;
     let mut sized = Vec::new();
     let mut unreadable = Vec::new();
     for c in &node.children {
-        let r = row(c.name.display().to_string(), path.join(&c.name), c, node.bytes, plan);
-        if matches!(r.kind, RowKind::Unreadable { .. }) { unreadable.push(r) } else { sized.push(r) }
+        let r = row(
+            c.name.display().to_string(),
+            path.join(&c.name),
+            c,
+            node.bytes,
+            plan,
+        );
+        if matches!(r.kind, RowKind::Unreadable { .. }) {
+            unreadable.push(r)
+        } else {
+            sized.push(r)
+        }
     }
     sized.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.name.cmp(&b.name)));
     let mut rows = sized;
@@ -88,7 +112,9 @@ pub fn level(index: &UsageIndex, path: &Path, plan: Option<&Plan>, now: i64, tz:
             path: None,
             bytes: node.other_bytes,
             fraction: fraction(node.other_bytes, node.bytes),
-            kind: RowKind::Other { count: node.other_count },
+            kind: RowKind::Other {
+                count: node.other_count,
+            },
             badge: None,
         });
     }
@@ -121,18 +147,35 @@ fn unexplained(index: &UsageIndex) -> Vec<(String, u64)> {
 }
 
 fn fraction(bytes: u64, whole: u64) -> f64 {
-    if whole == 0 { 0.0 } else { bytes as f64 / whole as f64 }
+    if whole == 0 {
+        0.0
+    } else {
+        bytes as f64 / whole as f64
+    }
 }
 
 fn row(name: String, path: PathBuf, n: &Node, whole: u64, plan: Option<&Plan>) -> Row {
     let kind = match n.unreadable_owner {
-        Some(0) => RowKind::Unreadable { owner: "root".into() },
-        Some(uid) => RowKind::Unreadable { owner: format!("uid {uid}") },
-        None if n.dir => RowKind::Dir { drillable: !n.children.is_empty() },
+        Some(0) => RowKind::Unreadable {
+            owner: "root".into(),
+        },
+        Some(uid) => RowKind::Unreadable {
+            owner: format!("uid {uid}"),
+        },
+        None if n.dir => RowKind::Dir {
+            drillable: !n.children.is_empty(),
+        },
         None => RowKind::File,
     };
     let badge = plan.and_then(|p| plan_badge(p, &path));
-    Row { name, bytes: n.bytes, fraction: fraction(n.bytes, whole), kind, badge, path: Some(path) }
+    Row {
+        name,
+        bytes: n.bytes,
+        fraction: fraction(n.bytes, whole),
+        kind,
+        badge,
+        path: Some(path),
+    }
 }
 
 /// Entries (not report-only) at or under `path`: Item targets, a StoreRule's
@@ -157,5 +200,11 @@ pub fn plan_badge(plan: &Plan, path: &Path) -> Option<String> {
             bytes += e.bytes;
         }
     }
-    (rows > 0).then(|| format!("in plan: {rows} row{} · {}", if rows == 1 { "" } else { "s" }, human_bytes(bytes)))
+    (rows > 0).then(|| {
+        format!(
+            "in plan: {rows} row{} · {}",
+            if rows == 1 { "" } else { "s" },
+            human_bytes(bytes)
+        )
+    })
 }

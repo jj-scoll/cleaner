@@ -116,7 +116,9 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
 }
 
 fn has_display() -> bool {
-    ["WAYLAND_DISPLAY", "DISPLAY"].iter().any(|v| std::env::var_os(v).is_some_and(|s| !s.is_empty()))
+    ["WAYLAND_DISPLAY", "DISPLAY"]
+        .iter()
+        .any(|v| std::env::var_os(v).is_some_and(|s| !s.is_empty()))
 }
 
 #[cfg(feature = "gui")]
@@ -172,14 +174,34 @@ fn cmd_plan(json: bool, notify: bool) -> anyhow::Result<i32> {
     }
     println!("Plan {}", plan.id);
     for cat in cats.iter().map(|c| c.id()) {
-        let sel: Vec<&Entry> = plan.entries.iter().filter(|e| e.category == cat && e.selected).collect();
+        let sel: Vec<&Entry> = plan
+            .entries
+            .iter()
+            .filter(|e| e.category == cat && e.selected)
+            .collect();
         let bytes: u64 = sel.iter().map(|e| e.bytes).sum();
-        let report = plan.report_only.iter().filter(|e| e.category == cat).count();
-        let extra = if report > 0 { format!("  (+{report} report only)") } else { String::new() };
-        println!("  {cat:<14} {:>4} selected  {:>10}{extra}", sel.len(), human_bytes(bytes));
+        let report = plan
+            .report_only
+            .iter()
+            .filter(|e| e.category == cat)
+            .count();
+        let extra = if report > 0 {
+            format!("  (+{report} report only)")
+        } else {
+            String::new()
+        };
+        println!(
+            "  {cat:<14} {:>4} selected  {:>10}{extra}",
+            sel.len(),
+            human_bytes(bytes)
+        );
     }
     let n = plan.entries.iter().filter(|e| e.selected).count();
-    println!("Total selected: {} in {}", human_bytes(plan.selected_bytes()), plural(n, "item"));
+    println!(
+        "Total selected: {} in {}",
+        human_bytes(plan.selected_bytes()),
+        plural(n, "item")
+    );
     if !plan.skipped.is_empty() {
         println!("Skipped: {} (see `cleaner show`)", plan.skipped.len());
     }
@@ -195,7 +217,8 @@ fn cmd_plan(json: bool, notify: bool) -> anyhow::Result<i32> {
 /// A failure is only a warning; the plan is already saved.
 fn notify_plan(plan: &Plan, threshold: u64) {
     let mut launch = |id: &str| {
-        let started = cleaner::self_exe().and_then(|exe| gui_launch_command(&exe, Some(id)).status());
+        let started =
+            cleaner::self_exe().and_then(|exe| gui_launch_command(&exe, Some(id)).status());
         match started {
             Ok(s) if s.success() => {}
             Ok(s) => eprintln!("warning: starting the GUI failed: systemd-run {s}"),
@@ -249,8 +272,14 @@ fn cmd_if_low() -> anyhow::Result<i32> {
     };
     let gui = cfg!(feature = "gui");
     let notifier = DbusNotifier::new(gui);
-    let launch: Option<cleaner::notify::LowSpaceLaunch<'_>> = if gui { Some(&mut launch) } else { None };
-    if let Err(e) = cleaner::notify::notify_low_space(&low, saved.as_ref().map_err(Clone::clone), &notifier, launch) {
+    let launch: Option<cleaner::notify::LowSpaceLaunch<'_>> =
+        if gui { Some(&mut launch) } else { None };
+    if let Err(e) = cleaner::notify::notify_low_space(
+        &low,
+        saved.as_ref().map_err(Clone::clone),
+        &notifier,
+        launch,
+    ) {
         eprintln!("warning: notification failed: {e:#}");
     }
     Ok(0)
@@ -264,7 +293,10 @@ fn print_entry(e: &Entry) {
     } else {
         (human_bytes(e.bytes), "")
     };
-    println!("  {mark} {size:>10}  {}  ({}){perm}{est}", e.title, e.reason);
+    println!(
+        "  {mark} {size:>10}  {}  ({}){perm}{est}",
+        e.title, e.reason
+    );
     if let Some(note) = &e.note {
         println!("      note: {note}");
     }
@@ -282,7 +314,12 @@ fn cmd_show(id: Option<String>, json: bool, sort: Sort) -> anyhow::Result<i32> {
         println!("{}", serde_json::to_string_pretty(&plan)?);
         return Ok(0);
     }
-    println!("Plan {} (created {}), {}", plan.id, local_time(plan.created), path.display());
+    println!(
+        "Plan {} (created {}), {}",
+        plan.id,
+        local_time(plan.created),
+        path.display()
+    );
     println!("Total selected: {}", human_bytes(plan.selected_bytes()));
     for cat in category_order(&plan) {
         let mut entries: Vec<&Entry> = plan.entries.iter().filter(|e| e.category == cat).collect();
@@ -305,7 +342,13 @@ fn cmd_show(id: Option<String>, json: bool, sort: Sort) -> anyhow::Result<i32> {
         let mut report_only: Vec<&Entry> = plan.report_only.iter().collect();
         sort.apply(&mut report_only);
         for e in report_only {
-            println!("  {:>10}  {}  {}  ({})", human_bytes(e.bytes), e.category, e.title, e.reason);
+            println!(
+                "  {:>10}  {}  {}  ({})",
+                human_bytes(e.bytes),
+                e.category,
+                e.title,
+                e.reason
+            );
         }
     }
     Ok(0)
@@ -322,10 +365,16 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
             plan.id
         );
     }
-    let known: Vec<&str> = registry(&Config::default()).iter().map(|c| c.id()).collect();
+    let known: Vec<&str> = registry(&Config::default())
+        .iter()
+        .map(|c| c.id())
+        .collect();
     for c in only {
         if !known.contains(&c.as_str()) {
-            bail!("unknown category: {c} (expected one of {})", known.join(", "));
+            bail!(
+                "unknown category: {c} (expected one of {})",
+                known.join(", ")
+            );
         }
     }
     let chosen: Vec<&Entry> = plan
@@ -340,7 +389,11 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
     let total: u64 = chosen.iter().map(|e| e.bytes).sum();
     println!("Plan {} (created {})", plan.id, local_time(plan.created));
     if !yes {
-        print!("Delete {} ({})? [y/N] ", plural(chosen.len(), "item"), human_bytes(total));
+        print!(
+            "Delete {} ({})? [y/N] ",
+            plural(chosen.len(), "item"),
+            human_bytes(total)
+        );
         std::io::stdout().flush()?;
         let mut answer = String::new();
         std::io::stdin().lock().read_line(&mut answer)?;
@@ -392,7 +445,11 @@ fn cmd_status(json: bool) -> anyhow::Result<i32> {
     let count = |o: &str| last_run.iter().filter(|l| l.outcome == o).count();
     let deleted_bytes: u64 = last_run.iter().map(|l| l.bytes).sum();
     let used_pct = |total: u64, avail: u64| {
-        if total == 0 { 0.0 } else { (total - avail.min(total)) as f64 * 100.0 / total as f64 }
+        if total == 0 {
+            0.0
+        } else {
+            (total - avail.min(total)) as f64 * 100.0 / total as f64
+        }
     };
 
     if json {
@@ -460,7 +517,11 @@ fn cmd_log(since_days: Option<u64>, json: bool) -> anyhow::Result<i32> {
         println!("No runs logged.");
     }
     for l in &lines {
-        let detail = if l.detail.is_empty() { String::new() } else { format!("  ({})", l.detail) };
+        let detail = if l.detail.is_empty() {
+            String::new()
+        } else {
+            format!("  ({})", l.detail)
+        };
         println!(
             "{}  {:<7} {:>10}  {}  {}{detail}",
             local_time(l.time),
@@ -480,7 +541,11 @@ fn cmd_timer(action: TimerCmd) -> anyhow::Result<i32> {
             let config = load_config(&paths)?;
             let exe = cleaner::self_exe()?.canonicalize()?;
             timer::install(&paths, &config, &exe)?;
-            println!("Timer installed: `{}` runs daily at {}.", exe.display(), config.timer_time);
+            println!(
+                "Timer installed: `{}` runs daily at {}.",
+                exe.display(),
+                config.timer_time
+            );
         }
         TimerCmd::Uninstall => {
             timer::uninstall(&paths)?;

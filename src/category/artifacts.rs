@@ -28,8 +28,17 @@ pub struct EcoRule {
 }
 
 fn eco(name: &str, markers: &[&str], artifacts: &[&str]) -> EcoRule {
-    let pats = |v: &[&str]| v.iter().map(|s| Pattern::new(s).expect("builtin pattern")).collect();
-    EcoRule { name: name.into(), markers: pats(markers), artifacts: pats(artifacts), preselect: true }
+    let pats = |v: &[&str]| {
+        v.iter()
+            .map(|s| Pattern::new(s).expect("builtin pattern"))
+            .collect()
+    };
+    EcoRule {
+        name: name.into(),
+        markers: pats(markers),
+        artifacts: pats(artifacts),
+        preselect: true,
+    }
 }
 
 /// The artifact names that existed before plan 4. The worktree "ignored
@@ -65,31 +74,58 @@ const LEGACY_ARTIFACT_NAMES: &[&str] = &[
 
 /// Patterns for [`LEGACY_ARTIFACT_NAMES`].
 pub fn legacy_artifact_patterns() -> Vec<Pattern> {
-    LEGACY_ARTIFACT_NAMES.iter().map(|s| Pattern::new(s).expect("builtin pattern")).collect()
+    LEGACY_ARTIFACT_NAMES
+        .iter()
+        .map(|s| Pattern::new(s).expect("builtin pattern"))
+        .collect()
 }
 
 /// The ecosystem table from spec §5.2a (marker patterns → artifact patterns).
 pub fn builtin_ecosystems() -> Vec<EcoRule> {
     vec![
         eco("rust", &["Cargo.toml"], &["target"]),
-        eco("node", &["package.json"], &["node_modules", ".next", ".turbo", ".parcel-cache", "dist"]),
+        eco(
+            "node",
+            &["package.json"],
+            &["node_modules", ".next", ".turbo", ".parcel-cache", "dist"],
+        ),
         eco(
             "python",
             &["pyproject.toml", "setup.py", "requirements*.txt"],
-            &[".venv", "venv", PYCACHE, ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", "*.egg-info"],
+            &[
+                ".venv",
+                "venv",
+                PYCACHE,
+                ".pytest_cache",
+                ".mypy_cache",
+                ".ruff_cache",
+                ".tox",
+                "*.egg-info",
+            ],
         ),
-        eco("terraform", &["*.tf", "terragrunt.hcl"], &[".terraform", ".terragrunt-cache"]),
+        eco(
+            "terraform",
+            &["*.tf", "terragrunt.hcl"],
+            &[".terraform", ".terragrunt-cache"],
+        ),
         eco("gradle", &["build.gradle*"], &["build", ".gradle"]),
         eco("maven", &["pom.xml"], &["target"]),
         eco("cmake", &["CMakeLists.txt"], &["build", "cmake-build-*"]),
         eco("dotnet", &["*.csproj"], &["bin", "obj"]),
-        eco("zig", &["build.zig"], &["zig-cache", ".zig-cache", "zig-out"]),
+        eco(
+            "zig",
+            &["build.zig"],
+            &["zig-cache", ".zig-cache", "zig-out"],
+        ),
         eco("composer", &["composer.json"], &["vendor"]),
         eco("elixir", &["mix.exs"], &["_build", "deps"]),
         eco("haskell", &["*.cabal", "cabal.project"], &["dist-newstyle"]),
         eco("stack", &["stack.yaml"], &[".stack-work"]),
         eco("godot", &["project.godot"], &[".godot", ".import"]),
-        EcoRule { preselect: false, ..eco("jupyter", &["*.ipynb"], &[".ipynb_checkpoints"]) },
+        EcoRule {
+            preselect: false,
+            ..eco("jupyter", &["*.ipynb"], &[".ipynb_checkpoints"])
+        },
     ]
 }
 
@@ -102,7 +138,12 @@ pub fn parse_custom_rule(s: &str) -> anyhow::Result<EcoRule> {
         bail!("extra rule {s:?} needs a non-empty artifact and marker name without '/'");
     }
     let pat = |p: &str| Pattern::new(p).with_context(|| format!("extra rule {s:?}"));
-    Ok(EcoRule { name: "custom".into(), markers: vec![pat(marker)?], artifacts: vec![pat(artifact)?], preselect: true })
+    Ok(EcoRule {
+        name: "custom".into(),
+        markers: vec![pat(marker)?],
+        artifacts: vec![pat(artifact)?],
+        preselect: true,
+    })
 }
 
 /// First 43 bytes of a valid `CACHEDIR.TAG` (bford.info/cachedir).
@@ -114,10 +155,17 @@ pub fn has_cachedir_tag(dir: &Path) -> bool {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     let tag = dir.join("CACHEDIR.TAG");
-    if !tag.symlink_metadata().is_ok_and(|m| m.file_type().is_file()) {
+    if !tag
+        .symlink_metadata()
+        .is_ok_and(|m| m.file_type().is_file())
+    {
         return false;
     }
-    let Ok(mut f) = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(&tag) else {
+    let Ok(mut f) = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&tag)
+    else {
         return false;
     };
     let mut head = [0u8; CACHEDIR_SIGNATURE.len()];
@@ -140,7 +188,8 @@ pub struct Discovery {
 }
 
 fn matches_any(pats: &[Pattern], name: &OsStr) -> bool {
-    name.to_str().is_some_and(|n| pats.iter().any(|p| p.matches(n)))
+    name.to_str()
+        .is_some_and(|n| pats.iter().any(|p| p.matches(n)))
 }
 
 struct Child {
@@ -151,14 +200,26 @@ struct Child {
 
 /// lstat'd children of `dir`; unreadable dirs and entries are skipped.
 fn children(dir: &Path) -> Vec<Child> {
-    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     rd.flatten()
-        .filter_map(|e| Some(Child { name: e.file_name(), path: e.path(), md: e.metadata().ok()? }))
+        .filter_map(|e| {
+            Some(Child {
+                name: e.file_name(),
+                path: e.path(),
+                md: e.metadata().ok()?,
+            })
+        })
         .collect()
 }
 
 fn skip(path: &Path, home: &Path, reason: &str) -> Skip {
-    Skip { category: ID.into(), title: crate::paths::tilde(path, home), reason: reason.into() }
+    Skip {
+        category: ID.into(),
+        title: crate::paths::tilde(path, home),
+        reason: reason.into(),
+    }
 }
 
 /// True if `dir` is at or inside a protected path, so the walk must not
@@ -203,10 +264,15 @@ pub fn discover_all(
     let mut projects: Vec<Project> = Vec::new();
     let mut skips = Vec::new();
     let mut claimed: HashSet<PathBuf> = HashSet::new();
-    let all_artifacts: Vec<Pattern> = ecos.iter().flat_map(|e| e.artifacts.iter().cloned()).collect();
+    let all_artifacts: Vec<Pattern> = ecos
+        .iter()
+        .flat_map(|e| e.artifacts.iter().cloned())
+        .collect();
 
     for root in roots {
-        let Ok(root_md) = root.symlink_metadata() else { continue };
+        let Ok(root_md) = root.symlink_metadata() else {
+            continue;
+        };
         if !root_md.is_dir() || inside_protected(prot, root) {
             continue;
         }
@@ -249,15 +315,42 @@ pub fn discover_all(
                     skips.push(skip(&c.path, home, "mount point, not crossed"));
                     continue;
                 }
-                claim(&c.path, &c.md, prot, home, &mut claimed, &mut found, &mut skips);
+                claim(
+                    &c.path,
+                    &c.md,
+                    prot,
+                    home,
+                    &mut claimed,
+                    &mut found,
+                    &mut skips,
+                );
             }
             if python {
-                let not_here: HashSet<&Path> = candidates.iter().map(|c| c.path.as_path()).collect();
-                find_pycache(&dir, dev, &all_artifacts, &not_here, prot, home, &mut claimed, &mut found, &mut skips);
+                let not_here: HashSet<&Path> =
+                    candidates.iter().map(|c| c.path.as_path()).collect();
+                find_pycache(
+                    &dir,
+                    dev,
+                    &all_artifacts,
+                    &not_here,
+                    prot,
+                    home,
+                    &mut claimed,
+                    &mut found,
+                    &mut skips,
+                );
             }
             if !found.is_empty() {
-                let unticked = found.iter().filter(|f| unticked_paths.contains(f.as_path())).cloned().collect();
-                projects.push(Project { dir: dir.clone(), artifacts: found, unticked });
+                let unticked = found
+                    .iter()
+                    .filter(|f| unticked_paths.contains(f.as_path()))
+                    .cloned()
+                    .collect();
+                projects.push(Project {
+                    dir: dir.clone(),
+                    artifacts: found,
+                    unticked,
+                });
             }
 
             if depth >= max_depth {
@@ -276,7 +369,11 @@ pub fn discover_all(
             }
         }
     }
-    Discovery { projects, skips, tagged }
+    Discovery {
+        projects,
+        skips,
+        tagged,
+    }
 }
 
 /// Records `path` as an artifact unless it's a symlink, protected, tracked
@@ -323,7 +420,11 @@ fn find_pycache(
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
         for c in children(&d) {
-            if !c.md.is_dir() || c.md.dev() != dev || c.name == ".git" || not_here.contains(c.path.as_path()) {
+            if !c.md.is_dir()
+                || c.md.dev() != dev
+                || c.name == ".git"
+                || not_here.contains(c.path.as_path())
+            {
                 continue;
             }
             if c.name == PYCACHE {
@@ -361,13 +462,24 @@ impl Category for Artifacts {
         }
         let roots = crate::paths::expand_roots(ctx.config.roots_for(&cfg.roots), ctx.home);
         let deny = tag_deny(ctx);
-        let Discovery { projects, skips, mut tagged } =
-            discover_all(&roots, cfg.max_depth, &ecos, ctx.protector, ctx.home, &deny);
+        let Discovery {
+            projects,
+            skips,
+            mut tagged,
+        } = discover_all(&roots, cfg.max_depth, &ecos, ctx.protector, ctx.home, &deny);
         out.skipped.extend(skips);
 
         // Direct children of ~/.cache: the walk never enters dotdirs under a root.
-        let listed: HashSet<&Path> =
-            tagged.iter().map(PathBuf::as_path).chain(projects.iter().flat_map(|p| &p.artifacts).map(PathBuf::as_path)).collect();
+        let listed: HashSet<&Path> = tagged
+            .iter()
+            .map(PathBuf::as_path)
+            .chain(
+                projects
+                    .iter()
+                    .flat_map(|p| &p.artifacts)
+                    .map(PathBuf::as_path),
+            )
+            .collect();
         let mut cache_tagged = Vec::new();
         for c in children(&ctx.home.join(".cache")) {
             if c.md.is_dir()
@@ -376,7 +488,8 @@ impl Category for Artifacts {
                 && has_cachedir_tag(&c.path)
                 && !deny(&c.path)
                 && !ctx.protector.is_protected(&c.path)
-                && !crate::git::repo_root(&c.path).is_some_and(|repo| crate::git::is_tracked(&repo, &c.path))
+                && !crate::git::repo_root(&c.path)
+                    .is_some_and(|repo| crate::git::is_tracked(&repo, &c.path))
             {
                 cache_tagged.push(c.path);
             }
@@ -395,7 +508,10 @@ impl Category for Artifacts {
                     Ok((m, fp)) => {
                         let side = if p.unticked.contains(a) {
                             let name = a.file_name().unwrap_or_default();
-                            for e in ecos.iter().filter(|e| !e.preselect && matches_any(&e.artifacts, name)) {
+                            for e in ecos
+                                .iter()
+                                .filter(|e| !e.preselect && matches_any(&e.artifacts, name))
+                            {
                                 if !unticked_ecos.contains(&e.name.as_str()) {
                                     unticked_ecos.push(&e.name);
                                 }
@@ -405,9 +521,14 @@ impl Category for Artifacts {
                             &mut ticked
                         };
                         side.1 += m.bytes;
-                        side.0.push(Target { path: a.clone(), fp });
+                        side.0.push(Target {
+                            path: a.clone(),
+                            fp,
+                        });
                     }
-                    Err(e) => out.skipped.push(skip(a, ctx.home, &format!("cannot measure: {e}"))),
+                    Err(e) => out
+                        .skipped
+                        .push(skip(a, ctx.home, &format!("cannot measure: {e}"))),
                 }
             }
             if ticked.0.is_empty() && unticked.0.is_empty() {
@@ -415,10 +536,14 @@ impl Category for Artifacts {
             }
 
             let excluded: HashSet<&Path> = p.artifacts.iter().map(PathBuf::as_path).collect();
-            let skip_fn = |q: &Path| excluded.contains(q) || q.file_name() == Some(OsStr::new(".git"));
+            let skip_fn =
+                |q: &Path| excluded.contains(q) || q.file_name() == Some(OsStr::new(".git"));
             let file_age = newest_mtime_excluding(&p.dir, &skip_fn);
             let root = crate::git::repo_root(&p.dir);
-            let commit_age = root.as_deref().and_then(crate::git::last_commit_time).unwrap_or(0);
+            let commit_age = root
+                .as_deref()
+                .and_then(crate::git::last_commit_time)
+                .unwrap_or(0);
             let last_active = file_age.max(commit_age);
             let idle_secs = ctx.now - last_active;
             let days = idle_secs.max(0) / 86_400;
@@ -432,9 +557,9 @@ impl Category for Artifacts {
             // A project inside a linked worktree (`.git` is a file) that is
             // finished is pre-selected whatever its age (§5.2a).
             let finished_worktree = root.is_some_and(|r| {
-                *finished
-                    .entry(r)
-                    .or_insert_with_key(|r| r.join(".git").is_file() && crate::category::worktrees::is_finished(r))
+                *finished.entry(r).or_insert_with_key(|r| {
+                    r.join(".git").is_file() && crate::category::worktrees::is_finished(r)
+                })
             });
             if finished_worktree {
                 reason.push_str("; worktree is finished");
@@ -464,7 +589,10 @@ impl Category for Artifacts {
                 push(ticked.0, ticked.1, reason, selected);
             }
             if !unticked.0.is_empty() {
-                let reason = format!("{} artifacts are never pre-selected; {age_reason}", unticked_ecos.join(", "));
+                let reason = format!(
+                    "{} artifacts are never pre-selected; {age_reason}",
+                    unticked_ecos.join(", ")
+                );
                 push(unticked.0, unticked.1, reason, false);
             }
         }
@@ -476,7 +604,9 @@ impl Category for Artifacts {
                         id: String::new(),
                         category: ID.into(),
                         title: crate::paths::tilde(&dir, ctx.home),
-                        kind: EntryKind::Item { targets: vec![Target { path: dir, fp }] },
+                        kind: EntryKind::Item {
+                            targets: vec![Target { path: dir, fp }],
+                        },
                         bytes: m.bytes,
                         reason: format!("CACHEDIR.TAG cache · untouched {}", plural(days, "day")),
                         selected: false,
@@ -485,7 +615,9 @@ impl Category for Artifacts {
                         last_active: None,
                     });
                 }
-                Err(e) => out.skipped.push(skip(&dir, ctx.home, &format!("cannot measure: {e}"))),
+                Err(e) => out
+                    .skipped
+                    .push(skip(&dir, ctx.home, &format!("cannot measure: {e}"))),
             }
         }
         Ok(out)

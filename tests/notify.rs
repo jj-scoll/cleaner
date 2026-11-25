@@ -6,7 +6,8 @@ mod common;
 use assert_cmd::Command;
 use cleaner::disk::FsUsage;
 use cleaner::notify::{
-    Notifier, NotifyOutcome, gui_launch_command, low_space_text, notify_if_worth_it, notify_low_space,
+    Notifier, NotifyOutcome, gui_launch_command, low_space_text, notify_if_worth_it,
+    notify_low_space,
 };
 use cleaner::plan::{Entry, EntryKind, Plan};
 use common::{mkfile, set_age};
@@ -40,12 +41,16 @@ impl Notifier for FakeNotifier {
         if self.fail {
             anyhow::bail!("no notification daemon");
         }
-        self.calls.borrow_mut().push((summary.to_string(), body.to_string()));
+        self.calls
+            .borrow_mut()
+            .push((summary.to_string(), body.to_string()));
         Ok(7)
     }
 
     fn notify_urgent(&self, summary: &str, body: &str) -> anyhow::Result<u32> {
-        self.urgent.borrow_mut().push((summary.to_string(), body.to_string()));
+        self.urgent
+            .borrow_mut()
+            .push((summary.to_string(), body.to_string()));
         Ok(7)
     }
 
@@ -65,7 +70,9 @@ fn plan_with(bytes: u64) -> Plan {
             id: "e1".into(),
             category: "caches".into(),
             title: "pip".into(),
-            kind: EntryKind::Item { targets: Vec::new() },
+            kind: EntryKind::Item {
+                targets: Vec::new(),
+            },
             bytes,
             reason: "old".into(),
             selected: true,
@@ -83,7 +90,13 @@ const GIB: u64 = 1 << 30;
 /// Runs `notify_if_worth_it` and returns the outcome and the launched ids.
 fn run(plan: &Plan, n: &FakeNotifier) -> (NotifyOutcome, Vec<String>) {
     let mut launched = Vec::new();
-    let out = notify_if_worth_it(plan, GIB, n, Some(&mut |id: &str| launched.push(id.to_string()))).unwrap();
+    let out = notify_if_worth_it(
+        plan,
+        GIB,
+        n,
+        Some(&mut |id: &str| launched.push(id.to_string())),
+    )
+    .unwrap();
     (out, launched)
 }
 
@@ -123,7 +136,10 @@ fn click_launches_gui_for_plan() {
 /// open window), and a failed start is reported instead of swallowed.
 #[test]
 fn gui_launch_uses_own_transient_unit() {
-    let cmd = gui_launch_command(std::path::Path::new("/nix/store/x/bin/cleaner"), Some("20261110T221007Z"));
+    let cmd = gui_launch_command(
+        std::path::Path::new("/nix/store/x/bin/cleaner"),
+        Some("20261110T221007Z"),
+    );
     assert_eq!(cmd.get_program(), "systemd-run");
     let args: Vec<_> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
     assert_eq!(
@@ -159,7 +175,11 @@ fn gui_launch_without_plan() {
 }
 
 fn low_fs(label: &str, total_gib: u64, avail_gib: u64) -> FsUsage {
-    FsUsage { label: label.into(), total: total_gib * GIB, avail: avail_gib * GIB }
+    FsUsage {
+        label: label.into(),
+        total: total_gib * GIB,
+        avail: avail_gib * GIB,
+    }
 }
 
 #[test]
@@ -195,7 +215,13 @@ fn low_space_notifies_urgent_regardless_of_threshold() {
     let plan = plan_with(0);
     let n = FakeNotifier::new(true);
     let mut launched: Vec<Option<String>> = Vec::new();
-    let out = notify_low_space(&low, Ok(&plan), &n, Some(&mut |id| launched.push(id.map(str::to_string)))).unwrap();
+    let out = notify_low_space(
+        &low,
+        Ok(&plan),
+        &n,
+        Some(&mut |id| launched.push(id.map(str::to_string))),
+    )
+    .unwrap();
     assert_eq!(out, NotifyOutcome::Opened);
     assert_eq!(n.urgent.borrow().len(), 1);
     assert!(n.calls.borrow().is_empty());
@@ -203,8 +229,13 @@ fn low_space_notifies_urgent_regardless_of_threshold() {
 
     let n = FakeNotifier::new(true);
     let mut launched: Vec<Option<String>> = Vec::new();
-    notify_low_space(&low, Err("disk full".into()), &n, Some(&mut |id| launched.push(id.map(str::to_string))))
-        .unwrap();
+    notify_low_space(
+        &low,
+        Err("disk full".into()),
+        &n,
+        Some(&mut |id| launched.push(id.map(str::to_string))),
+    )
+    .unwrap();
     assert_eq!(launched, [None]);
 
     let n = FakeNotifier::new(false);
@@ -224,7 +255,8 @@ fn cli_build_points_at_show_and_does_not_wait() {
         *n.calls.borrow(),
         [(
             "2.0 GiB can be freed".to_string(),
-            "cleaner built a plan; nothing has been deleted. Run `cleaner show` to review it.".to_string()
+            "cleaner built a plan; nothing has been deleted. Run `cleaner show` to review it."
+                .to_string()
         )]
     );
     assert_eq!(n.waits.get(), 0);
@@ -245,7 +277,11 @@ fn cli_build_low_space_points_at_terminal_and_does_not_wait() {
     assert_eq!(n.urgent.borrow().len(), 1);
     assert_eq!(n.waits.get(), 0);
 
-    let (_, body) = low_space_text(&[low_fs("/home", 100, 3), low_fs("/data", 500, 40)], Ok(&plan), false);
+    let (_, body) = low_space_text(
+        &[low_fs("/home", 100, 3), low_fs("/data", 500, 40)],
+        Ok(&plan),
+        false,
+    );
     assert_eq!(
         body,
         "A plan can free 12.0 GiB. Nothing has been deleted. Run `cleaner show` to review it. \
@@ -268,9 +304,14 @@ fn dismiss_does_not_launch() {
 
 #[test]
 fn notify_error_is_returned() {
-    let n = FakeNotifier { fail: true, ..FakeNotifier::new(true) };
+    let n = FakeNotifier {
+        fail: true,
+        ..FakeNotifier::new(true)
+    };
     let mut launched = 0;
-    assert!(notify_if_worth_it(&plan_with(GIB), GIB, &n, Some(&mut |_: &str| launched += 1)).is_err());
+    assert!(
+        notify_if_worth_it(&plan_with(GIB), GIB, &n, Some(&mut |_: &str| launched += 1)).is_err()
+    );
     assert_eq!(launched, 0);
 }
 
@@ -282,7 +323,11 @@ fn notify_failure_is_not_fatal() {
     mkfile(&home.join(".cache/pip/http/a"), 20_000);
     set_age(&home.join(".cache/pip/http/a"), 40);
     mkfile(&home.join(".config/cleaner/config.toml"), 0);
-    std::fs::write(home.join(".config/cleaner/config.toml"), "notify_threshold_bytes = 0\n").unwrap();
+    std::fs::write(
+        home.join(".config/cleaner/config.toml"),
+        "notify_threshold_bytes = 0\n",
+    )
+    .unwrap();
     std::fs::create_dir_all(tmp.path().join("run")).unwrap();
 
     Command::new(env!("CARGO_BIN_EXE_cleaner"))

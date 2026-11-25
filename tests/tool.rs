@@ -15,7 +15,11 @@ fn args(v: &[&'static str]) -> Vec<&'static OsStr> {
 #[test]
 fn system_runner_missing_program() {
     let err = SystemRunner
-        .run("cleaner-no-such-tool", &args(&["--version"]), Duration::from_secs(5))
+        .run(
+            "cleaner-no-such-tool",
+            &args(&["--version"]),
+            Duration::from_secs(5),
+        )
         .unwrap_err();
     assert!(matches!(err, ToolError::Missing(_)), "{err:?}");
     assert_eq!(err.to_string(), "cleaner-no-such-tool is not installed");
@@ -25,7 +29,11 @@ fn system_runner_missing_program() {
 #[test]
 fn runner_captures_output_and_code() {
     let out = SystemRunner
-        .run("sh", &args(&["-c", "echo out; echo err >&2; exit 3"]), Duration::from_secs(10))
+        .run(
+            "sh",
+            &args(&["-c", "echo out; echo err >&2; exit 3"]),
+            Duration::from_secs(10),
+        )
         .unwrap();
     assert_eq!(out.code, Some(3));
     assert!(!out.ok());
@@ -36,7 +44,11 @@ fn runner_captures_output_and_code() {
 #[test]
 fn runner_sets_c_locale_and_null_stdin() {
     let out = SystemRunner
-        .run("sh", &args(&["-c", "echo \"$LC_ALL\"; cat"]), Duration::from_secs(10))
+        .run(
+            "sh",
+            &args(&["-c", "echo \"$LC_ALL\"; cat"]),
+            Duration::from_secs(10),
+        )
         .unwrap();
     assert!(out.ok(), "{out:?}");
     assert_eq!(out.stdout, "C\n");
@@ -46,7 +58,9 @@ fn runner_sets_c_locale_and_null_stdin() {
 fn sleep_children() -> Vec<String> {
     let mut found = Vec::new();
     for task in std::fs::read_dir("/proc/self/task").unwrap().flatten() {
-        let Ok(kids) = std::fs::read_to_string(task.path().join("children")) else { continue };
+        let Ok(kids) = std::fs::read_to_string(task.path().join("children")) else {
+            continue;
+        };
         for pid in kids.split_whitespace() {
             let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
             if String::from_utf8_lossy(&cmdline).contains("sleep") {
@@ -63,7 +77,11 @@ fn runner_timeout_kills_child() {
     let err = SystemRunner
         .run("sh", &args(&["-c", "sleep 30"]), Duration::from_secs(1))
         .unwrap_err();
-    assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        start.elapsed()
+    );
     assert!(matches!(err, ToolError::Timeout(_, 1)), "{err:?}");
     assert_eq!(err.to_string(), "sh timed out after 1s");
     assert_eq!(sleep_children(), Vec::<String>::new());
@@ -110,12 +128,22 @@ fn walk_respects_depth_and_protection() {
     }
     let prot = Protector::new(tmp.path(), &[root.join("keep").to_str().unwrap().into()]);
     let mut seen = Vec::new();
-    walk_dirs(std::slice::from_ref(&root), 2, &prot, &|_: &Path| false, &mut |p: &Path, d| {
-        seen.push((p.strip_prefix(&root).unwrap().to_path_buf(), d));
-    });
+    walk_dirs(
+        std::slice::from_ref(&root),
+        2,
+        &prot,
+        &|_: &Path| false,
+        &mut |p: &Path, d| {
+            seen.push((p.strip_prefix(&root).unwrap().to_path_buf(), d));
+        },
+    );
     seen.sort();
-    let want: Vec<(PathBuf, usize)> =
-        vec![("".into(), 0), ("a".into(), 1), ("a/b".into(), 2), ("x".into(), 1)];
+    let want: Vec<(PathBuf, usize)> = vec![
+        ("".into(), 0),
+        ("a".into(), 1),
+        ("a/b".into(), 2),
+        ("x".into(), 1),
+    ];
     assert_eq!(seen, want);
 }
 
@@ -128,9 +156,16 @@ fn run_interactive_without_tty_is_plain_run() {
     }
     // The GUI path: stdin null, output captured, own process group.
     let out = SystemRunner
-        .run_interactive("sh", &args(&["-c", "echo out; echo err >&2; cat; exit 3"]), Duration::from_secs(10))
+        .run_interactive(
+            "sh",
+            &args(&["-c", "echo out; echo err >&2; cat; exit 3"]),
+            Duration::from_secs(10),
+        )
         .unwrap();
-    assert_eq!((out.code, out.stdout.as_str(), out.stderr.as_str()), (Some(3), "out\n", "err\n"));
+    assert_eq!(
+        (out.code, out.stdout.as_str(), out.stderr.as_str()),
+        (Some(3), "out\n", "err\n")
+    );
 }
 
 /// Run under a pty (e.g. `script -qec 'cargo test --test tool run_interactive_on_a_tty' /dev/null`);
@@ -145,10 +180,18 @@ fn run_interactive_on_a_tty_shares_stdin_and_process_group() {
     let pgrp = |stat: &str| stat.split(' ').nth(4).unwrap().trim().to_string();
     let ours = pgrp(&std::fs::read_to_string("/proc/self/stat").unwrap());
     let out = SystemRunner
-        .run_interactive("sh", &args(&["-c", "test -t 0 && echo tty; cat /proc/$$/stat"]), Duration::from_secs(10))
+        .run_interactive(
+            "sh",
+            &args(&["-c", "test -t 0 && echo tty; cat /proc/$$/stat"]),
+            Duration::from_secs(10),
+        )
         .unwrap();
     let mut lines = out.stdout.lines();
     assert_eq!(lines.next(), Some("tty"), "{out:?}");
-    assert_eq!(pgrp(lines.next().unwrap()), ours, "child not in our (foreground) process group");
+    assert_eq!(
+        pgrp(lines.next().unwrap()),
+        ours,
+        "child not in our (foreground) process group"
+    );
     println!("tty path checked");
 }

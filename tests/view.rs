@@ -76,7 +76,11 @@ fn level_thresholds() {
 
 #[test]
 fn fs_bar_text() {
-    let fs = [FsUsage { label: "/".into(), total: 100 * GIB, avail: 18 * GIB }];
+    let fs = [FsUsage {
+        label: "/".into(),
+        total: 100 * GIB,
+        avail: 18 * GIB,
+    }];
     let d = dashboard(&fs, None, &[], &TimeZone::UTC);
     let bar = &d.filesystems[0];
     assert_eq!(bar.label, "/");
@@ -173,7 +177,10 @@ fn history_groups_runs() {
 fn last_run_text() {
     let log = [line("R", "P", 1_794_388_320, "deleted", 4096)];
     let d = dashboard(&[], None, &log, &TimeZone::UTC);
-    assert_eq!(d.last_run.as_deref(), Some("Last run 2026-11-11 09:12 · deleted 4.0 KiB"));
+    assert_eq!(
+        d.last_run.as_deref(),
+        Some("Last run 2026-11-11 09:12 · deleted 4.0 KiB")
+    );
 }
 
 #[test]

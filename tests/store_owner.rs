@@ -1,7 +1,9 @@
 mod common;
 
 use cleaner::category::app_caches::AppCaches;
-use cleaner::category::store::{StoreRule, Unit, apply_rule, evaluate_as, foreign_reason, scan_stores};
+use cleaner::category::store::{
+    StoreRule, Unit, apply_rule, evaluate_as, foreign_reason, scan_stores,
+};
 use cleaner::category::{Category, Outcome, ScanCtx};
 use cleaner::config::{Config, StoreCfg};
 use cleaner::fsutil::measure::InodeSet;
@@ -32,18 +34,36 @@ fn fx(days: u64) -> Fx {
     mkfile(&root.join("a/f"), 1000);
     mkfile(&root.join("b/f"), 1000);
     age_tree(&root, days);
-    Fx { _tmp: tmp, home, root }
+    Fx {
+        _tmp: tmp,
+        home,
+        root,
+    }
 }
 
 fn rule(root: &Path) -> StoreRule {
-    StoreRule { root: root.to_path_buf(), max_age_days: 30, unit: Unit::Depth(1), glob: None, min_bytes: None }
+    StoreRule {
+        root: root.to_path_buf(),
+        max_age_days: 30,
+        unit: Unit::Depth(1),
+        glob: None,
+        min_bytes: None,
+    }
 }
 
 fn with_ctx<R>(home: &Path, euid: u32, f: impl FnOnce(&ScanCtx) -> R) -> R {
     let config = Config::default();
     let protector = Protector::new(home, &config.protect);
     let tools = FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config: &config, protector: &protector, tools: &tools, euid, usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config: &config,
+        protector: &protector,
+        tools: &tools,
+        euid,
+        usage: None,
+    };
     f(&ctx)
 }
 
@@ -57,7 +77,10 @@ fn foreign_unit_is_not_a_match() {
     assert!(own.foreign.is_empty());
     let other = evaluate_as(&r, now(), &prot, &mut InodeSet::default(), my_uid() + 1);
     assert!(other.matches.is_empty());
-    assert_eq!(other.foreign, vec![(f.root.join("a"), my_uid()), (f.root.join("b"), my_uid())]);
+    assert_eq!(
+        other.foreign,
+        vec![(f.root.join("a"), my_uid()), (f.root.join("b"), my_uid())]
+    );
 }
 
 #[test]
@@ -71,7 +94,14 @@ fn scan_stores_skips_foreign_root_once() {
         min_bytes: None,
     };
     let out = with_ctx(&f.home, my_uid() + 1, |ctx| {
-        scan_stores("caches", &[cfg], ctx, &mut InodeSet::default(), &|n, d| format!("{n} {d}"), &|_| false)
+        scan_stores(
+            "caches",
+            &[cfg],
+            ctx,
+            &mut InodeSet::default(),
+            &|n, d| format!("{n} {d}"),
+            &|_| false,
+        )
     });
     assert!(out.entries.is_empty());
     assert_eq!(
@@ -79,22 +109,34 @@ fn scan_stores_skips_foreign_root_once() {
         vec![Skip {
             category: "caches".into(),
             title: "~/.cache/s".into(),
-            reason: format!("contains files owned by uid {}; cleaner never runs as root", my_uid()),
+            reason: format!(
+                "contains files owned by uid {}; cleaner never runs as root",
+                my_uid()
+            ),
         }]
     );
 }
 
 #[test]
 fn foreign_reason_names_root() {
-    assert_eq!(foreign_reason(0), "contains files owned by root; cleaner never runs as root");
-    assert_eq!(foreign_reason(7), "contains files owned by uid 7; cleaner never runs as root");
+    assert_eq!(
+        foreign_reason(0),
+        "contains files owned by root; cleaner never runs as root"
+    );
+    assert_eq!(
+        foreign_reason(7),
+        "contains files owned by uid 7; cleaner never runs as root"
+    );
 }
 
 #[test]
 fn apply_rule_never_deletes_foreign() {
     let f = fx(40);
     let out = with_ctx(&f.home, my_uid() + 1, |ctx| apply_rule(&rule(&f.root), ctx));
-    assert!(matches!(out, Outcome::Skipped { ref reason } if reason == "nothing matches the rule now"), "{out:?}");
+    assert!(
+        matches!(out, Outcome::Skipped { ref reason } if reason == "nothing matches the rule now"),
+        "{out:?}"
+    );
     assert!(f.root.join("a").exists() && f.root.join("b").exists());
 }
 
@@ -109,7 +151,14 @@ fn young_foreign_unit_not_reported() {
         min_bytes: None,
     };
     let out = with_ctx(&f.home, my_uid() + 1, |ctx| {
-        scan_stores("caches", &[cfg], ctx, &mut InodeSet::default(), &|n, d| format!("{n} {d}"), &|_| false)
+        scan_stores(
+            "caches",
+            &[cfg],
+            ctx,
+            &mut InodeSet::default(),
+            &|n, d| format!("{n} {d}"),
+            &|_| false,
+        )
     });
     assert!(out.entries.is_empty());
     assert!(out.skipped.is_empty(), "{:?}", out.skipped);
@@ -125,7 +174,11 @@ fn app_cache_foreign_dir_is_skip() {
     mkfile(&app_dir.join("Default/Cache/x"), 1000);
     age_tree(&home.join(".config"), 1);
     let out = with_ctx(&home, my_uid() + 1, |ctx| {
-        AppCaches { proc_root: procs.clone() }.scan(ctx, &mut InodeSet::default()).unwrap()
+        AppCaches {
+            proc_root: procs.clone(),
+        }
+        .scan(ctx, &mut InodeSet::default())
+        .unwrap()
     });
     assert!(out.entries.is_empty(), "{:?}", out.entries);
     assert_eq!(out.skipped.len(), 1, "{:?}", out.skipped);

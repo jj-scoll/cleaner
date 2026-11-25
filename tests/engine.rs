@@ -3,8 +3,8 @@ mod common;
 use cleaner::category::Outcome;
 use cleaner::config::Config;
 use cleaner::engine::{
-    Ctx, Progress, apply_plan, apply_plan_with, apply_selected, build_plan, build_plan_with,
-    IndexMode, plan_and_save, plan_and_save_with, registry,
+    Ctx, IndexMode, Progress, apply_plan, apply_plan_with, apply_selected, build_plan,
+    build_plan_with, plan_and_save, plan_and_save_with, registry,
 };
 use cleaner::lock::acquire;
 use cleaner::paths::Paths;
@@ -21,7 +21,11 @@ fn fixture() -> (TempDir, Ctx) {
     let tmp = TempDir::new().unwrap();
     let home = tmp.path();
     let proj = home.join("proj");
-    for (f, n) in [("Cargo.toml", 10), ("src/main.rs", 10), ("target/debug/app", 50_000)] {
+    for (f, n) in [
+        ("Cargo.toml", 10),
+        ("src/main.rs", 10),
+        ("target/debug/app", 50_000),
+    ] {
         mkfile(&proj.join(f), n);
         set_age(&proj.join(f), 40);
     }
@@ -47,7 +51,12 @@ fn plan_for(ctx: &Ctx) -> Plan {
 }
 
 fn id_of(plan: &Plan, category: &str) -> String {
-    plan.entries.iter().find(|e| e.category == category).unwrap().id.clone()
+    plan.entries
+        .iter()
+        .find(|e| e.category == category)
+        .unwrap()
+        .id
+        .clone()
 }
 
 fn outcome<'a>(report: &'a cleaner::engine::RunReport, id: &str) -> &'a Outcome {
@@ -55,7 +64,11 @@ fn outcome<'a>(report: &'a cleaner::engine::RunReport, id: &str) -> &'a Outcome 
 }
 
 fn selected_ids(plan: &Plan) -> Vec<String> {
-    plan.entries.iter().filter(|e| e.selected).map(|e| e.id.clone()).collect()
+    plan.entries
+        .iter()
+        .filter(|e| e.selected)
+        .map(|e| e.id.clone())
+        .collect()
 }
 
 fn target(home: &Path) -> std::path::PathBuf {
@@ -67,11 +80,23 @@ fn build_plan_covers_categories() {
     let (tmp, ctx) = fixture();
     let plan = plan_for(&ctx);
     for cat in ["artifacts", "caches", "user_rules"] {
-        assert!(plan.entries.iter().any(|e| e.category == cat), "no {cat} entry: {plan:#?}");
+        assert!(
+            plan.entries.iter().any(|e| e.category == cat),
+            "no {cat} entry: {plan:#?}"
+        );
     }
-    let ids: Vec<&str> = plan.entries.iter().chain(&plan.report_only).map(|e| e.id.as_str()).collect();
+    let ids: Vec<&str> = plan
+        .entries
+        .iter()
+        .chain(&plan.report_only)
+        .map(|e| e.id.as_str())
+        .collect();
     assert!(ids.iter().all(|i| !i.is_empty()));
-    assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len(), "ids not unique: {ids:?}");
+    assert_eq!(
+        ids.iter().collect::<HashSet<_>>().len(),
+        ids.len(),
+        "ids not unique: {ids:?}"
+    );
     assert!(plan.selected_bytes() > 0);
     drop(tmp);
 }
@@ -94,7 +119,11 @@ fn apply_selected_deletes_and_logs() {
 
     let lines = cleaner::log::read(&ctx.paths.log_file, None).unwrap();
     assert_eq!(lines.len(), ids.len());
-    assert!(lines.iter().all(|l| l.outcome == "deleted" && l.plan_id == plan.id));
+    assert!(
+        lines
+            .iter()
+            .all(|l| l.outcome == "deleted" && l.plan_id == plan.id)
+    );
     assert!(lines.iter().all(|l| l.run_id == report.run_id));
 }
 
@@ -104,7 +133,13 @@ fn apply_skips_missing_target() {
     let plan = plan_for(&ctx);
     std::fs::remove_dir_all(target(tmp.path())).unwrap();
     let id = id_of(&plan, "artifacts");
-    let report = apply_plan(&ctx, &registry(&ctx.config), &plan, std::slice::from_ref(&id)).unwrap();
+    let report = apply_plan(
+        &ctx,
+        &registry(&ctx.config),
+        &plan,
+        std::slice::from_ref(&id),
+    )
+    .unwrap();
     match outcome(&report, &id) {
         Outcome::Skipped { reason } => assert!(reason.contains("no longer exists"), "{reason}"),
         o => panic!("expected Skipped, got {o:?}"),
@@ -118,7 +153,13 @@ fn apply_skips_drifted_target() {
     std::thread::sleep(std::time::Duration::from_millis(1100));
     mkfile(&target(tmp.path()).join("new.o"), 10);
     let id = id_of(&plan, "artifacts");
-    let report = apply_plan(&ctx, &registry(&ctx.config), &plan, std::slice::from_ref(&id)).unwrap();
+    let report = apply_plan(
+        &ctx,
+        &registry(&ctx.config),
+        &plan,
+        std::slice::from_ref(&id),
+    )
+    .unwrap();
     match outcome(&report, &id) {
         Outcome::Skipped { reason } => assert!(reason.contains("changed since plan"), "{reason}"),
         o => panic!("expected Skipped, got {o:?}"),
@@ -133,7 +174,12 @@ fn apply_continues_after_failed_item() {
     let plan = plan_for(&ctx);
     let (art, cache) = (id_of(&plan, "artifacts"), id_of(&plan, "caches"));
     std::fs::set_permissions(&proj, std::fs::Permissions::from_mode(0o555)).unwrap();
-    let report = apply_plan(&ctx, &registry(&ctx.config), &plan, &[art.clone(), cache.clone()]);
+    let report = apply_plan(
+        &ctx,
+        &registry(&ctx.config),
+        &plan,
+        &[art.clone(), cache.clone()],
+    );
     std::fs::set_permissions(&proj, std::fs::Permissions::from_mode(0o755)).unwrap();
     let report = report.unwrap();
 
@@ -153,7 +199,10 @@ fn second_lock_fails() {
     let path = tmp.path().join("run/cleaner.lock");
     let _held = acquire(&path).unwrap();
     let err = acquire(&path).err().expect("second acquire must fail");
-    assert!(format!("{err:#}").contains("another cleaner run is in progress"), "{err:#}");
+    assert!(
+        format!("{err:#}").contains("another cleaner run is in progress"),
+        "{err:#}"
+    );
 }
 
 /// A process forked by another thread holds copies of every fd until it
@@ -203,7 +252,10 @@ fn apply_plan_reports_progress() {
     let plan = plan_for(&ctx);
     let ids = [id_of(&plan, "artifacts"), id_of(&plan, "caches")];
     let mut events: Vec<Progress> = Vec::new();
-    apply_plan_with(&ctx, &registry(&ctx.config), &plan, &ids, &mut |p| events.push(p)).unwrap();
+    apply_plan_with(&ctx, &registry(&ctx.config), &plan, &ids, &mut |p| {
+        events.push(p)
+    })
+    .unwrap();
     assert_eq!(events.len(), 3, "{events:?}");
     assert_eq!(events[0].done, 0);
     let last = events.last().unwrap();
@@ -219,7 +271,10 @@ fn apply_selected_respects_lock() {
     let err = apply_selected(&ctx.paths, &ctx.config, &plan, &ids, &mut |_| {})
         .err()
         .expect("apply must fail while the lock is held");
-    assert!(format!("{err:#}").contains("another cleaner run is in progress"), "{err:#}");
+    assert!(
+        format!("{err:#}").contains("another cleaner run is in progress"),
+        "{err:#}"
+    );
     assert!(target(tmp.path()).exists());
     assert!(tmp.path().join(".cache/pip/http/a").exists());
     assert!(tmp.path().join("Downloads/old.zip").exists());
@@ -256,7 +311,10 @@ fn unknown_id_errors() {
 
 #[test]
 fn registry_order_plan2() {
-    let ids: Vec<&str> = registry(&Config::default()).iter().map(|c| c.id()).collect();
+    let ids: Vec<&str> = registry(&Config::default())
+        .iter()
+        .map(|c| c.id())
+        .collect();
     assert_eq!(
         ids,
         [
@@ -320,7 +378,10 @@ fn artifacts_then_worktree_same_run() {
     mkfile(&repo.join("Cargo.toml"), 10);
     common::git_commit_all(&repo);
     let wt = home.join("wt/w");
-    git_fixed(&repo, &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "w"]);
+    git_fixed(
+        &repo,
+        &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "w"],
+    );
     mkfile(&wt.join("w.txt"), 100);
     common::git_commit_all(&wt);
     git_fixed(&repo, &["merge", "-q", "--ff-only", "w"]);
@@ -336,16 +397,32 @@ fn artifacts_then_worktree_same_run() {
         usage: None,
     };
     let plan = plan_for(&ctx);
-    let art = plan.entries.iter().find(|e| e.category == "artifacts").expect("artifacts entry");
-    let wte = plan.entries.iter().find(|e| e.category == "worktrees").expect("worktree entry");
+    let art = plan
+        .entries
+        .iter()
+        .find(|e| e.category == "artifacts")
+        .expect("artifacts entry");
+    let wte = plan
+        .entries
+        .iter()
+        .find(|e| e.category == "worktrees")
+        .expect("worktree entry");
     assert!(art.selected && wte.selected, "{plan:#?}");
     assert!(art.bytes >= 50_000, "artifacts bytes {}", art.bytes);
-    assert!(wte.bytes < 50_000, "worktree bytes must exclude target/: {}", wte.bytes);
+    assert!(
+        wte.bytes < 50_000,
+        "worktree bytes must exclude target/: {}",
+        wte.bytes
+    );
 
     let ids = vec![art.id.clone(), wte.id.clone()];
     let report = apply_plan(&ctx, &registry(&ctx.config), &plan, &ids).unwrap();
     for id in &ids {
-        assert!(matches!(outcome(&report, id), Outcome::Deleted { .. }), "{id}: {:?}", report.results);
+        assert!(
+            matches!(outcome(&report, id), Outcome::Deleted { .. }),
+            "{id}: {:?}",
+            report.results
+        );
     }
     assert!(!wt.exists());
 }
@@ -353,7 +430,10 @@ fn artifacts_then_worktree_same_run() {
 fn ctx_with_roots(home: &Path, roots: Vec<String>) -> Ctx {
     Ctx {
         paths: Paths::for_home(home),
-        config: Config { scan_roots: roots, ..Config::default() },
+        config: Config {
+            scan_roots: roots,
+            ..Config::default()
+        },
         protector: Protector::new(home, &[]),
         now: now(),
         tools: std::sync::Arc::new(common::FakeRunner::new()),
@@ -383,7 +463,10 @@ fn symlinked_root_case(root: &str) {
         plan.skipped.contains(&cleaner::plan::Skip {
             category: "scan_roots".into(),
             title: root.into(),
-            reason: format!("{root} is a symlink to {}; add that path instead", real.display()),
+            reason: format!(
+                "{root} is a symlink to {}; add that path instead",
+                real.display()
+            ),
         }),
         "{root}: {:?}",
         plan.skipped
@@ -403,14 +486,24 @@ fn extra_root_scanned() {
         mkfile(&extra.path().join(f), 10);
     }
     age_tree(extra.path(), 40);
-    let ctx = ctx_with_roots(home.path(), vec!["~".into(), extra.path().display().to_string()]);
+    let ctx = ctx_with_roots(
+        home.path(),
+        vec!["~".into(), extra.path().display().to_string()],
+    );
     let plan = plan_for(&ctx);
-    let arts: Vec<_> = plan.entries.iter().filter(|e| e.category == "artifacts").collect();
+    let arts: Vec<_> = plan
+        .entries
+        .iter()
+        .filter(|e| e.category == "artifacts")
+        .collect();
     assert_eq!(arts.len(), 1, "{arts:?}");
     assert!(arts[0].selected);
     match &arts[0].kind {
         cleaner::plan::EntryKind::Item { targets } => {
-            assert_eq!(targets.iter().map(|t| t.path.clone()).collect::<Vec<_>>(), vec![extra.path().join("proj/target")])
+            assert_eq!(
+                targets.iter().map(|t| t.path.clone()).collect::<Vec<_>>(),
+                vec![extra.path().join("proj/target")]
+            )
         }
         k => panic!("{k:?}"),
     }
@@ -424,7 +517,11 @@ fn filesystem_paths_adds_scan_root_mounts() {
     let default_paths = cleaner::engine::filesystem_paths(&config, home.path());
     config.scan_roots = vec!["~".into(), extra.path().display().to_string()];
     let paths = cleaner::engine::filesystem_paths(&config, home.path());
-    assert_eq!(paths[..default_paths.len()], default_paths[..], "config.filesystems come first");
+    assert_eq!(
+        paths[..default_paths.len()],
+        default_paths[..],
+        "config.filesystems come first"
+    );
     let mount = cleaner::disk::mount_point(extra.path()).unwrap();
     assert!(paths.contains(&mount), "{paths:?} lacks {mount:?}");
     let mut dedup = paths.clone();
@@ -438,9 +535,15 @@ fn plan_and_save_writes_index() {
     let (tmp, ctx) = fixture();
     let ctx = hermetic(ctx);
     plan_and_save(&ctx.paths, &ctx.config, ctx.now, &mut |_| {}).unwrap();
-    let idx = cleaner::fsutil::usage::UsageIndex::load(&ctx.paths.usage_index).unwrap().unwrap();
+    let idx = cleaner::fsutil::usage::UsageIndex::load(&ctx.paths.usage_index)
+        .unwrap()
+        .unwrap();
     let home: std::path::PathBuf = tmp.path().components().collect();
-    assert!(idx.trees.iter().any(|t| t.root == home), "{:?}", idx.trees.iter().map(|t| &t.root).collect::<Vec<_>>());
+    assert!(
+        idx.trees.iter().any(|t| t.root == home),
+        "{:?}",
+        idx.trees.iter().map(|t| &t.root).collect::<Vec<_>>()
+    );
     assert_eq!(idx.created, ctx.now);
 }
 
@@ -451,7 +554,11 @@ fn index_write_failure_is_skip() {
     std::fs::create_dir_all(&ctx.paths.usage_index).unwrap();
     let (plan, path) = plan_and_save(&ctx.paths, &ctx.config, ctx.now, &mut |_| {}).unwrap();
     assert!(path.exists());
-    let s = plan.skipped.iter().find(|s| s.category == "disk_map").expect("disk_map skip");
+    let s = plan
+        .skipped
+        .iter()
+        .find(|s| s.category == "disk_map")
+        .expect("disk_map skip");
     assert_eq!(s.title, "disk index");
     assert!(s.reason.starts_with("not saved:"), "{}", s.reason);
 }
@@ -460,10 +567,23 @@ fn index_write_failure_is_skip() {
 fn reuse_mode_does_not_rebuild() {
     let (_tmp, ctx) = fixture();
     let ctx = hermetic(ctx);
-    let old = cleaner::fsutil::usage::UsageIndex { created: 1, min_node: 5, trees: Vec::new() };
+    let old = cleaner::fsutil::usage::UsageIndex {
+        created: 1,
+        min_node: 5,
+        trees: Vec::new(),
+    };
     old.save(&ctx.paths.usage_index).unwrap();
-    plan_and_save_with(&ctx.paths, &ctx.config, ctx.now, IndexMode::Reuse, &mut |_| {}).unwrap();
-    let after = cleaner::fsutil::usage::UsageIndex::load(&ctx.paths.usage_index).unwrap().unwrap();
+    plan_and_save_with(
+        &ctx.paths,
+        &ctx.config,
+        ctx.now,
+        IndexMode::Reuse,
+        &mut |_| {},
+    )
+    .unwrap();
+    let after = cleaner::fsutil::usage::UsageIndex::load(&ctx.paths.usage_index)
+        .unwrap()
+        .unwrap();
     assert_eq!(after.created, 1);
 }
 
@@ -473,15 +593,35 @@ fn plan_and_save_reports_index_progress_first() {
     let ctx = hermetic(ctx);
     let cats = registry(&ctx.config).len();
     let mut events: Vec<Progress> = Vec::new();
-    plan_and_save_with(&ctx.paths, &ctx.config, ctx.now, IndexMode::Rebuild, &mut |p| events.push(p)).unwrap();
+    plan_and_save_with(
+        &ctx.paths,
+        &ctx.config,
+        ctx.now,
+        IndexMode::Rebuild,
+        &mut |p| events.push(p),
+    )
+    .unwrap();
     assert_eq!(events.len(), cats + 2, "{events:?}");
-    assert_eq!((events[0].done, events[0].current.as_str()), (0, "disk index"));
+    assert_eq!(
+        (events[0].done, events[0].current.as_str()),
+        (0, "disk index")
+    );
     assert_eq!(events[1].done, 0);
     let last = events.last().unwrap();
-    assert_eq!((last.done, last.total, last.current.as_str()), (cats, cats, ""));
+    assert_eq!(
+        (last.done, last.total, last.current.as_str()),
+        (cats, cats, "")
+    );
     // Reuse walks nothing, so it reports no index step.
     let mut reuse: Vec<Progress> = Vec::new();
-    plan_and_save_with(&ctx.paths, &ctx.config, ctx.now, IndexMode::Reuse, &mut |p| reuse.push(p)).unwrap();
+    plan_and_save_with(
+        &ctx.paths,
+        &ctx.config,
+        ctx.now,
+        IndexMode::Reuse,
+        &mut |p| reuse.push(p),
+    )
+    .unwrap();
     assert_eq!(reuse.len(), cats + 1, "{reuse:?}");
 }
 
@@ -498,11 +638,20 @@ fn rows_are_report_only_and_cannot_apply() {
     ctx.config.idle_folders.min_bytes = 65536;
 
     let plan = plan_for(&ctx);
-    let row = plan.report_only.iter().find(|e| e.category == "idle_folders" && e.title == "~/old").unwrap();
+    let row = plan
+        .report_only
+        .iter()
+        .find(|e| e.category == "idle_folders" && e.title == "~/old")
+        .unwrap();
     assert!(!row.selected);
     assert!(plan.entries.iter().all(|e| e.category != "idle_folders"));
 
-    let res = apply_plan(&ctx, &registry(&ctx.config), &plan, std::slice::from_ref(&row.id));
+    let res = apply_plan(
+        &ctx,
+        &registry(&ctx.config),
+        &plan,
+        std::slice::from_ref(&row.id),
+    );
     let err = res.err().expect("apply must refuse a report-only id");
     assert!(err.to_string().contains("unknown entry id"), "{err:#}");
     assert!(old.exists());

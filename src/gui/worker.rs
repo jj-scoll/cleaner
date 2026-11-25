@@ -39,7 +39,9 @@ pub fn run<T: Send + 'static>(
             }
         }
         if let Some(f) = on_done.take() {
-            f(Err(anyhow::anyhow!("the background job stopped unexpectedly")));
+            f(Err(anyhow::anyhow!(
+                "the background job stopped unexpectedly"
+            )));
         }
     });
 }

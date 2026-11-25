@@ -50,7 +50,10 @@ impl UsagePage {
 
         let content: gtk::Widget = match level {
             None => {
-                let scan = gtk::Button::builder().label("Scan now").halign(gtk::Align::Center).build();
+                let scan = gtk::Button::builder()
+                    .label("Scan now")
+                    .halign(gtk::Align::Center)
+                    .build();
                 scan.add_css_class("pill");
                 scan.add_css_class("suggested-action");
                 let c = cbs.clone();
@@ -69,7 +72,10 @@ impl UsagePage {
         toolbar.add_top_bar(&header);
         toolbar.set_content(Some(&content));
         let title = level.map_or("What's using my disk", |l| l.title.as_str());
-        let page = adw::NavigationPage::builder().title(title).child(&toolbar).build();
+        let page = adw::NavigationPage::builder()
+            .title(title)
+            .child(&toolbar)
+            .build();
         UsagePage { page, cbs }
     }
 
@@ -97,7 +103,12 @@ impl UsagePage {
 }
 
 fn dim(text: &str) -> gtk::Label {
-    gtk::Label::builder().label(text).xalign(0.0).wrap(true).css_classes(["dim-label", "caption"]).build()
+    gtk::Label::builder()
+        .label(text)
+        .xalign(0.0)
+        .wrap(true)
+        .css_classes(["dim-label", "caption"])
+        .build()
 }
 
 fn level_content(l: &Level, cbs: &Rc<Callbacks>) -> gtk::Widget {
@@ -116,7 +127,10 @@ fn level_content(l: &Level, cbs: &Rc<Callbacks>) -> gtk::Widget {
     }
     body.append(&group);
     for (root, bytes) in &l.unexplained {
-        body.append(&dim(&format!("{root}: {} on the filesystem is not in this map", human_bytes(*bytes))));
+        body.append(&dim(&format!(
+            "{root}: {} on the filesystem is not in this map",
+            human_bytes(*bytes)
+        )));
     }
     let clamp = adw::Clamp::builder().maximum_size(860).child(&body).build();
     gtk::ScrolledWindow::builder()
@@ -132,9 +146,17 @@ fn row_widget(r: &Row, cbs: &Rc<Callbacks>) -> adw::ActionRow {
         RowKind::Unreadable { owner } => format!("unreadable (owned by {owner})"),
         _ => String::new(),
     };
-    let row = adw::ActionRow::builder().title(&r.name).subtitle(&subtitle).use_markup(false).build();
+    let row = adw::ActionRow::builder()
+        .title(&r.name)
+        .subtitle(&subtitle)
+        .use_markup(false)
+        .build();
     if let Some(badge) = &r.badge {
-        let b = gtk::Button::builder().label(badge).valign(gtk::Align::Center).css_classes(["flat", "caption"]).build();
+        let b = gtk::Button::builder()
+            .label(badge)
+            .valign(gtk::Align::Center)
+            .css_classes(["flat", "caption"])
+            .build();
         let c = cbs.clone();
         b.connect_clicked(move |_| fire(&c, |c| &c.on_badge, ()));
         row.add_suffix(&b);
@@ -151,7 +173,12 @@ fn row_widget(r: &Row, cbs: &Rc<Callbacks>) -> adw::ActionRow {
     }
     row.add_suffix(&bar);
     if !matches!(r.kind, RowKind::Unreadable { .. }) {
-        row.add_suffix(&gtk::Label::builder().label(human_bytes(r.bytes)).css_classes(["numeric"]).build());
+        row.add_suffix(
+            &gtk::Label::builder()
+                .label(human_bytes(r.bytes))
+                .css_classes(["numeric"])
+                .build(),
+        );
     }
     if let (RowKind::Dir { drillable: true }, Some(path)) = (&r.kind, &r.path) {
         row.set_activatable(true);

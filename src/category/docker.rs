@@ -105,14 +105,21 @@ fn docker(ctx: &ScanCtx, args: &[&str], timeout: Duration) -> Result<CmdOut, Too
 }
 
 fn first_line(s: &str) -> &str {
-    s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("")
+    s.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
 }
 
 /// Runs a query and returns its stdout, or why it failed.
 fn query(ctx: &ScanCtx, args: &[&str]) -> Result<String, String> {
     match docker(ctx, args, QUERY_TIMEOUT) {
         Ok(o) if o.ok() => Ok(o.stdout),
-        Ok(o) => Err(format!("docker {} failed: {}", args[..2].join(" "), first_line(&o.stderr))),
+        Ok(o) => Err(format!(
+            "docker {} failed: {}",
+            args[..2].join(" "),
+            first_line(&o.stderr)
+        )),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -137,9 +144,16 @@ fn finished_times(ctx: &ScanCtx, cs: &[&Container]) -> Vec<(String, jiff::Timest
     if cs.is_empty() {
         return Vec::new();
     }
-    let mut args = vec!["container", "inspect", "--format", "{{.Id}} {{.State.FinishedAt}}"];
+    let mut args = vec![
+        "container",
+        "inspect",
+        "--format",
+        "{{.Id}} {{.State.FinishedAt}}",
+    ];
     args.extend(cs.iter().map(|c| c.id.as_str()));
-    let Ok(out) = docker(ctx, &args, QUERY_TIMEOUT) else { return Vec::new() };
+    let Ok(out) = docker(ctx, &args, QUERY_TIMEOUT) else {
+        return Vec::new();
+    };
     out.stdout
         .lines()
         .filter_map(|l| {
@@ -155,11 +169,16 @@ fn size(s: &str) -> u64 {
 
 /// `buildx_buildkit_{node}_state` → `node`.
 fn state_node(volume: &str) -> Option<&str> {
-    volume.strip_prefix("buildx_buildkit_")?.strip_suffix("_state")
+    volume
+        .strip_prefix("buildx_buildkit_")?
+        .strip_suffix("_state")
 }
 
 fn is_anonymous(name: &str) -> bool {
-    name.len() == 64 && name.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    name.len() == 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn object(title: String, reason: &str, bytes: u64, selected: bool, refs: Vec<DockerRef>) -> Entry {
@@ -167,7 +186,9 @@ fn object(title: String, reason: &str, bytes: u64, selected: bool, refs: Vec<Doc
         id: String::new(),
         category: ID.into(),
         title,
-        kind: EntryKind::Object { obj: Object::Docker { refs } },
+        kind: EntryKind::Object {
+            obj: Object::Docker { refs },
+        },
         bytes,
         reason: reason.into(),
         selected,
@@ -178,7 +199,11 @@ fn object(title: String, reason: &str, bytes: u64, selected: bool, refs: Vec<Doc
 }
 
 fn one(kind: DockerKind, id: &str) -> Vec<DockerRef> {
-    vec![DockerRef { kind, id: id.into(), created: None }]
+    vec![DockerRef {
+        kind,
+        id: id.into(),
+        created: None,
+    }]
 }
 
 impl Category for Docker {
@@ -188,21 +213,28 @@ impl Category for Docker {
 
     fn scan(&self, ctx: &ScanCtx, _seen: &mut InodeSet) -> anyhow::Result<ScanOutput> {
         let mut out = ScanOutput::default();
-        let skip = |reason: String| Skip { category: ID.into(), title: ID.into(), reason };
+        let skip = |reason: String| Skip {
+            category: ID.into(),
+            title: ID.into(),
+            reason,
+        };
         match docker(ctx, &VERSION, QUERY_TIMEOUT) {
             Err(e) => {
                 out.skipped.push(skip(e.to_string()));
                 return Ok(out);
             }
             Ok(o) if !o.ok() => {
-                out.skipped.push(skip(format!("docker daemon not reachable: {}", first_line(&o.stderr))));
+                out.skipped.push(skip(format!(
+                    "docker daemon not reachable: {}",
+                    first_line(&o.stderr)
+                )));
                 return Ok(out);
             }
             Ok(_) => {}
         }
-        let df: Df = match query(ctx, &["system", "df", "-v", "--format", "json"])
-            .and_then(|s| serde_json::from_str(&s).map_err(|e| format!("can't read docker system df: {e}")))
-        {
+        let df: Df = match query(ctx, &["system", "df", "-v", "--format", "json"]).and_then(|s| {
+            serde_json::from_str(&s).map_err(|e| format!("can't read docker system df: {e}"))
+        }) {
             Ok(df) => df,
             Err(reason) => {
                 out.skipped.push(skip(reason));
@@ -210,13 +242,17 @@ impl Category for Docker {
             }
         };
         // Without the builder list, no state volume can be told orphaned.
-        let builders: Option<Vec<Builder>> = match query(ctx, &["buildx", "ls", "--format", "json"]) {
+        let builders: Option<Vec<Builder>> = match query(ctx, &["buildx", "ls", "--format", "json"])
+        {
             Ok(s) => s
                 .lines()
                 .filter(|l| !l.trim().is_empty())
                 .map(serde_json::from_str)
                 .collect::<Result<_, _>>()
-                .map_err(|e| out.skipped.push(skip(format!("can't read docker buildx ls: {e}"))))
+                .map_err(|e| {
+                    out.skipped
+                        .push(skip(format!("can't read docker buildx ls: {e}")))
+                })
                 .ok(),
             Err(reason) => {
                 out.skipped.push(skip(reason));
@@ -229,13 +265,19 @@ impl Category for Docker {
         let stopped: Vec<&Container> = df
             .containers
             .iter()
-            .filter(|c| STOPPED.contains(&c.state.as_str()) && !c.names.starts_with("buildx_buildkit_"))
+            .filter(|c| {
+                STOPPED.contains(&c.state.as_str()) && !c.names.starts_with("buildx_buildkit_")
+            })
             .collect();
         let finished = finished_times(ctx, &stopped);
         for c in stopped {
             let title = format!("container {}", c.names);
             let Some(created) = parse_time(&c.created_at) else {
-                out.skipped.push(Skip { category: ID.into(), title, reason: "unreadable creation time".into() });
+                out.skipped.push(Skip {
+                    category: ID.into(),
+                    title,
+                    reason: "unreadable creation time".into(),
+                });
                 continue;
             };
             let refs = vec![DockerRef {
@@ -246,19 +288,34 @@ impl Category for Docker {
             // Spec §5.2e "stopped > 7 days": aged by when it stopped. A
             // never-started container has a zero FinishedAt: its creation.
             let days = |t: jiff::Timestamp| (ctx.now - t.as_second()) / DAY;
-            let (reason, since) = match finished.iter().find(|(id, _)| id.starts_with(&c.id)).map(|(_, t)| *t) {
-                Some(t) if t.as_second() > 0 => (format!("stopped {} ago", plural(days(t).max(0), "day")), Some(t)),
-                Some(_) => {
-                    (format!("never started, created {} ago", plural(days(created).max(0), "day")), Some(created))
-                }
+            let (reason, since) = match finished
+                .iter()
+                .find(|(id, _)| id.starts_with(&c.id))
+                .map(|(_, t)| *t)
+            {
+                Some(t) if t.as_second() > 0 => (
+                    format!("stopped {} ago", plural(days(t).max(0), "day")),
+                    Some(t),
+                ),
+                Some(_) => (
+                    format!(
+                        "never started, created {} ago",
+                        plural(days(created).max(0), "day")
+                    ),
+                    Some(created),
+                ),
                 None => ("stopped, stop time unknown".to_string(), None),
             };
-            let old = since.is_some_and(|t| ctx.now - t.as_second() > cfg.container_days as i64 * DAY);
-            out.entries.push(object(title, &reason, size(&c.size), old, refs));
+            let old =
+                since.is_some_and(|t| ctx.now - t.as_second() > cfg.container_days as i64 * DAY);
+            out.entries
+                .push(object(title, &reason, size(&c.size), old, refs));
         }
 
         for i in &df.images {
-            let Ok(users) = i.containers.parse::<usize>() else { continue };
+            let Ok(users) = i.containers.parse::<usize>() else {
+                continue;
+            };
             let refs = one(DockerKind::Image, &i.id);
             let bytes = size(&i.unique_size);
             if i.repository == "<none>" {
@@ -269,16 +326,21 @@ impl Category for Docker {
                     0 => "dangling image".to_string(),
                     n => format!("dangling image, used by {}", plural(n, "container")),
                 };
-                out.entries.push(object(title, &reason, bytes, users == 0, refs));
+                out.entries
+                    .push(object(title, &reason, bytes, users == 0, refs));
             } else if users == 0 {
                 let title = format!("image {}:{}", i.repository, i.tag);
-                out.entries.push(object(title, "unused image", bytes, false, refs));
+                out.entries
+                    .push(object(title, "unused image", bytes, false, refs));
             }
         }
 
-        let nodes: Option<BTreeSet<&str>> = builders
-            .as_ref()
-            .map(|bs| bs.iter().flat_map(|b| &b.nodes).map(|n| n.name.as_str()).collect());
+        let nodes: Option<BTreeSet<&str>> = builders.as_ref().map(|bs| {
+            bs.iter()
+                .flat_map(|b| &b.nodes)
+                .map(|n| n.name.as_str())
+                .collect()
+        });
         let mut anonymous = Vec::new();
         let mut anonymous_bytes = 0;
         let mut orphans = Vec::new();
@@ -290,37 +352,79 @@ impl Category for Docker {
                 if nodes.as_ref().is_some_and(|ns| !ns.contains(node)) {
                     let title = format!("builder state {}", v.name);
                     let refs = one(DockerKind::Volume, &v.name);
-                    orphans.push(object(title, "state of a builder that no longer exists", size(&v.size), false, refs));
+                    orphans.push(object(
+                        title,
+                        "state of a builder that no longer exists",
+                        size(&v.size),
+                        false,
+                        refs,
+                    ));
                 }
             } else if is_anonymous(&v.name) {
-                anonymous.push(DockerRef { kind: DockerKind::Volume, id: v.name.clone(), created: None });
+                anonymous.push(DockerRef {
+                    kind: DockerKind::Volume,
+                    id: v.name.clone(),
+                    created: None,
+                });
                 anonymous_bytes += size(&v.size);
             } else {
                 let refs = one(DockerKind::Volume, &v.name);
-                out.entries.push(object(format!("volume {}", v.name), "unused volume", size(&v.size), false, refs));
+                out.entries.push(object(
+                    format!("volume {}", v.name),
+                    "unused volume",
+                    size(&v.size),
+                    false,
+                    refs,
+                ));
             }
         }
         if !anonymous.is_empty() {
             // DECISION D6: one row, not pre-selected.
             let title = plural(anonymous.len(), "anonymous volume");
-            out.entries.push(object(title, "unused anonymous volumes", anonymous_bytes, false, anonymous));
+            out.entries.push(object(
+                title,
+                "unused anonymous volumes",
+                anonymous_bytes,
+                false,
+                anonymous,
+            ));
         }
 
         // Only docker-container builders keep local state; the docker-driver
         // builder is the daemon, whose cache is the operation below.
-        for b in builders.iter().flatten().filter(|b| b.driver == "docker-container") {
+        for b in builders
+            .iter()
+            .flatten()
+            .filter(|b| b.driver == "docker-container")
+        {
             let bytes = b
                 .nodes
                 .iter()
-                .filter_map(|n| df.volumes.iter().find(|v| state_node(&v.name) == Some(&n.name)))
+                .filter_map(|n| {
+                    df.volumes
+                        .iter()
+                        .find(|v| state_node(&v.name) == Some(&n.name))
+                })
                 .map(|v| size(&v.size))
                 .sum();
             let entry = if b.current {
                 let reason = "current builder; its cache is pruned, the builder stays";
-                object(format!("builder {} cache", b.name), reason, bytes, false, one(DockerKind::BuilderCache, &b.name))
+                object(
+                    format!("builder {} cache", b.name),
+                    reason,
+                    bytes,
+                    false,
+                    one(DockerKind::BuilderCache, &b.name),
+                )
             } else {
                 let reason = "removes the builder and its state";
-                object(format!("builder {}", b.name), reason, bytes, false, one(DockerKind::Builder, &b.name))
+                object(
+                    format!("builder {}", b.name),
+                    reason,
+                    bytes,
+                    false,
+                    one(DockerKind::Builder, &b.name),
+                )
             };
             out.entries.push(entry);
         }
@@ -344,7 +448,9 @@ impl Category for Docker {
                 category: ID.into(),
                 title: "build cache".into(),
                 kind: EntryKind::Operation {
-                    op: Operation::DockerBuilderPrune { until_hours: cfg.build_cache_days * 24 },
+                    op: Operation::DockerBuilderPrune {
+                        until_hours: cfg.build_cache_days * 24,
+                    },
                 },
                 bytes: stale.iter().map(|c| size(&c.size)).sum(),
                 reason: format!("build cache unused for {}+ days", cfg.build_cache_days),
@@ -360,15 +466,20 @@ impl Category for Docker {
     fn apply(&self, entry: &Entry, ctx: &ScanCtx) -> Outcome {
         let docker_kind = matches!(
             entry.kind,
-            EntryKind::Object { obj: Object::Docker { .. } }
-                | EntryKind::Operation { op: Operation::DockerBuilderPrune { .. } }
+            EntryKind::Object {
+                obj: Object::Docker { .. }
+            } | EntryKind::Operation {
+                op: Operation::DockerBuilderPrune { .. }
+            }
         );
         if !docker_kind {
             return apply_default(entry, ctx);
         }
         let mut down = self.down.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(reason) = down.as_ref() {
-            return Outcome::Skipped { reason: reason.clone() };
+            return Outcome::Skipped {
+                reason: reason.clone(),
+            };
         }
         let probe = match docker(ctx, &VERSION, QUERY_TIMEOUT) {
             Ok(o) if o.ok() => None,
@@ -380,11 +491,21 @@ impl Category for Docker {
             return Outcome::Skipped { reason };
         }
         let (outcome, timed_out) = match &entry.kind {
-            EntryKind::Object { obj: Object::Docker { refs } } => apply_refs(entry, refs, ctx),
-            EntryKind::Operation { op: Operation::DockerBuilderPrune { until_hours } } => {
+            EntryKind::Object {
+                obj: Object::Docker { refs },
+            } => apply_refs(entry, refs, ctx),
+            EntryKind::Operation {
+                op: Operation::DockerBuilderPrune { until_hours },
+            } => {
                 let filter = format!("until={until_hours}h");
                 match prune(ctx, &["builder", "prune", "--force", "--filter", &filter]) {
-                    Ok(bytes) => (Outcome::Deleted { bytes, failures: Vec::new() }, false),
+                    Ok(bytes) => (
+                        Outcome::Deleted {
+                            bytes,
+                            failures: Vec::new(),
+                        },
+                        false,
+                    ),
                     Err(RefErr::Fail(error)) => (Outcome::Failed { error }, false),
                     Err(RefErr::Timeout(error)) => (Outcome::Failed { error }, true),
                     Err(RefErr::Skip(reason)) => (Outcome::Skipped { reason }, false),
@@ -454,7 +575,9 @@ fn apply_refs(entry: &Entry, refs: &[DockerRef], ctx: &ScanCtx) -> (Outcome, boo
     } else if let Some(error) = first_fail {
         Outcome::Failed { error }
     } else {
-        Outcome::Skipped { reason: first_skip.unwrap_or_else(|| "nothing to delete".into()) }
+        Outcome::Skipped {
+            reason: first_skip.unwrap_or_else(|| "nothing to delete".into()),
+        }
     };
     (outcome, timed_out)
 }
@@ -472,13 +595,25 @@ fn apply_ref(r: &DockerRef, ctx: &ScanCtx) -> Result<Option<u64>, RefErr> {
     let id = r.id.as_str();
     match r.kind {
         DockerKind::Container => {
-            let out = exists(ctx, &["container", "inspect", "--format", "{{.State.Status}} {{.Created}}", id])?;
+            let out = exists(
+                ctx,
+                &[
+                    "container",
+                    "inspect",
+                    "--format",
+                    "{{.State.Status}} {{.Created}}",
+                    id,
+                ],
+            )?;
             let line = out.trim();
             let (status, created) = line.split_once(' ').unwrap_or((line, ""));
             if !STOPPED.contains(&status) {
                 return Err(RefErr::Skip(format!("container is {status} now")));
             }
-            let planned = r.created.as_deref().and_then(|s| s.parse::<jiff::Timestamp>().ok());
+            let planned = r
+                .created
+                .as_deref()
+                .and_then(|s| s.parse::<jiff::Timestamp>().ok());
             let now = created.parse::<jiff::Timestamp>().ok();
             match (planned, now) {
                 (Some(a), Some(b)) if a.as_second() == b.as_second() => {}
@@ -505,7 +640,11 @@ fn apply_ref(r: &DockerRef, ctx: &ScanCtx) -> Result<Option<u64>, RefErr> {
         }
         DockerKind::BuilderCache => {
             exists(ctx, &["buildx", "inspect", id])?;
-            prune(ctx, &["buildx", "prune", "--builder", id, "--all", "--force"]).map(Some)
+            prune(
+                ctx,
+                &["buildx", "prune", "--builder", id, "--all", "--force"],
+            )
+            .map(Some)
         }
     }
 }
@@ -522,7 +661,10 @@ fn exists(ctx: &ScanCtx, args: &[&str]) -> Result<String, RefErr> {
 fn run_op(ctx: &ScanCtx, args: &[&str]) -> Result<CmdOut, RefErr> {
     match docker(ctx, args, OP_TIMEOUT) {
         Ok(o) if o.ok() => Ok(o),
-        Ok(o) => Err(RefErr::Fail(format!("docker refused: {}", first_line(&o.stderr)))),
+        Ok(o) => Err(RefErr::Fail(format!(
+            "docker refused: {}",
+            first_line(&o.stderr)
+        ))),
         Err(e) => Err(tool_err(e)),
     }
 }
@@ -537,7 +679,9 @@ fn prune(ctx: &ScanCtx, args: &[&str]) -> Result<u64, RefErr> {
     let out = run_op(ctx, args)?;
     let total = out.stdout.lines().chain(out.stderr.lines()).find_map(|l| {
         let l = l.trim();
-        let rest = l.strip_prefix("Total reclaimed space:").or_else(|| l.strip_prefix("Total:"))?;
+        let rest = l
+            .strip_prefix("Total reclaimed space:")
+            .or_else(|| l.strip_prefix("Total:"))?;
         parse_human_size(rest)
     });
     Ok(total.unwrap_or(0))

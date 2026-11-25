@@ -22,7 +22,10 @@ impl HistoryPage {
                 .build()
                 .upcast()
         } else {
-            let group = adw::PreferencesGroup::builder().margin_start(12).margin_end(12).build();
+            let group = adw::PreferencesGroup::builder()
+                .margin_start(12)
+                .margin_end(12)
+                .build();
             for run in runs {
                 let row = adw::ExpanderRow::builder()
                     .title(&run.when)
@@ -46,7 +49,12 @@ impl HistoryPage {
                     if !item.detail.is_empty() {
                         title.push_str(&format!(" ({})", item.detail));
                     }
-                    row.add_row(&adw::ActionRow::builder().title(title).use_markup(false).build());
+                    row.add_row(
+                        &adw::ActionRow::builder()
+                            .title(title)
+                            .use_markup(false)
+                            .build(),
+                    );
                 }
                 group.add(&row);
             }
@@ -66,7 +74,11 @@ impl HistoryPage {
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&adw::HeaderBar::new());
         toolbar.set_content(Some(&content));
-        let page = adw::NavigationPage::builder().title("History").tag("history").child(&toolbar).build();
+        let page = adw::NavigationPage::builder()
+            .title("History")
+            .tag("history")
+            .child(&toolbar)
+            .build();
         HistoryPage { page }
     }
 

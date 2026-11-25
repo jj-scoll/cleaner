@@ -17,7 +17,10 @@ fn bytes_of(p: &Path) -> u64 {
 }
 
 fn tree_of<'a>(idx: &'a UsageIndex, root: &Path) -> &'a Tree {
-    idx.trees.iter().find(|t| t.root == root).unwrap_or_else(|| panic!("no tree for {root:?}"))
+    idx.trees
+        .iter()
+        .find(|t| t.root == root)
+        .unwrap_or_else(|| panic!("no tree for {root:?}"))
 }
 
 fn child<'a>(n: &'a Node, name: &str) -> Option<&'a Node> {
@@ -25,7 +28,11 @@ fn child<'a>(n: &'a Node, name: &str) -> Option<&'a Node> {
 }
 
 fn names(n: &Node) -> Vec<String> {
-    let mut v: Vec<String> = n.children.iter().map(|c| c.name.display().to_string()).collect();
+    let mut v: Vec<String> = n
+        .children
+        .iter()
+        .map(|c| c.name.display().to_string())
+        .collect();
     v.sort();
     v
 }
@@ -48,7 +55,10 @@ fn index_sizes_and_prunes() {
     assert!(!child(root, "big.bin").unwrap().dir);
     assert!(child(root, "a").unwrap().dir);
     assert_eq!(root.other_count, 2);
-    assert_eq!(root.other_bytes, bytes_of(&r.join("b")) + bytes_of(&r.join("small.txt")));
+    assert_eq!(
+        root.other_bytes,
+        bytes_of(&r.join("b")) + bytes_of(&r.join("small.txt"))
+    );
 }
 
 #[test]
@@ -84,7 +94,11 @@ fn index_records_newest_mtime() {
     let root = &tree_of(&idx, &r).node;
     let a = child(root, "a").unwrap();
     let want = now() - 86_400;
-    assert!((a.newest_mtime - want).abs() <= 60, "{} vs {want}", a.newest_mtime);
+    assert!(
+        (a.newest_mtime - want).abs() <= 60,
+        "{} vs {want}",
+        a.newest_mtime
+    );
     assert_eq!(root.newest_mtime, a.newest_mtime);
 }
 
@@ -98,7 +112,12 @@ fn index_never_follows_symlinks() {
     std::os::unix::fs::symlink(&other, r.join("l")).unwrap();
     let linked_root = tmp.path().join("lr");
     std::os::unix::fs::symlink(&other, &linked_root).unwrap();
-    let idx = build(&[r.clone(), linked_root.clone(), tmp.path().join("missing")], &[], MIN, 0);
+    let idx = build(
+        &[r.clone(), linked_root.clone(), tmp.path().join("missing")],
+        &[],
+        MIN,
+        0,
+    );
     assert_eq!(idx.trees.len(), 1);
     let root = &tree_of(&idx, &r).node;
     assert!(root.bytes < 64 * 1024, "{}", root.bytes);
@@ -137,7 +156,12 @@ fn index_excludes_given_paths() {
     let root = &tree_of(&idx, &r).node;
     assert!(child(root, "skip").is_none());
     assert_eq!(root.bytes, bytes_of(&r) - bytes_of(&r.join("skip")));
-    assert!(idx.trees.len() == 1 && build(std::slice::from_ref(&r), std::slice::from_ref(&r), MIN, 0).trees.is_empty());
+    assert!(
+        idx.trees.len() == 1
+            && build(std::slice::from_ref(&r), std::slice::from_ref(&r), MIN, 0)
+                .trees
+                .is_empty()
+    );
 }
 
 #[test]
@@ -149,11 +173,20 @@ fn index_save_load_roundtrip() {
     mkfile(&r.join("ok"), 32768);
     let idx = build(std::slice::from_ref(&r), &[], MIN, 5);
     assert!(child(&tree_of(&idx, &r).node, "ok").is_some());
-    assert!(tree_of(&idx, &r).node.children.iter().any(|c| c.name == weird));
+    assert!(
+        tree_of(&idx, &r)
+            .node
+            .children
+            .iter()
+            .any(|c| c.name == weird)
+    );
     let file = tmp.path().join("state/usage.json");
     idx.save(&file).unwrap();
     assert_eq!(UsageIndex::load(&file).unwrap(), Some(idx));
-    assert_eq!(UsageIndex::load(&tmp.path().join("missing.json")).unwrap(), None);
+    assert_eq!(
+        UsageIndex::load(&tmp.path().join("missing.json")).unwrap(),
+        None
+    );
 }
 
 #[test]
@@ -187,7 +220,11 @@ fn node_and_visit() {
     assert!(idx.node(&r.join("nope")).is_none());
     let mut seen: Vec<PathBuf> = Vec::new();
     idx.visit(&mut |p, _| seen.push(p.to_path_buf()));
-    let pos = |p: PathBuf| seen.iter().position(|s| *s == p).unwrap_or_else(|| panic!("{p:?} not in {seen:?}"));
+    let pos = |p: PathBuf| {
+        seen.iter()
+            .position(|s| *s == p)
+            .unwrap_or_else(|| panic!("{p:?} not in {seen:?}"))
+    };
     assert!(pos(r.clone()) < pos(r.join("a")));
     assert!(pos(r.join("a")) < pos(r.join("a/f")));
     assert!(seen.contains(&r.join("z.bin")));

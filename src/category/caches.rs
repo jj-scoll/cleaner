@@ -91,8 +91,12 @@ impl Category for Caches {
 
     fn apply(&self, entry: &Entry, ctx: &ScanCtx) -> Outcome {
         match &entry.kind {
-            EntryKind::Operation { op: Operation::UvCachePrune } => uv_prune(ctx),
-            EntryKind::Operation { op: Operation::GoCleanModcache } => go_clean(ctx),
+            EntryKind::Operation {
+                op: Operation::UvCachePrune,
+            } => uv_prune(ctx),
+            EntryKind::Operation {
+                op: Operation::GoCleanModcache,
+            } => go_clean(ctx),
             _ => apply_default(entry, ctx),
         }
     }
@@ -104,10 +108,17 @@ const UV_IN_USE: &str = "uv cache is in use by running uv processes";
 
 /// `uv cache dir`, or `Err((uv is missing, message))`.
 fn uv_cache_dir(ctx: &ScanCtx) -> Result<PathBuf, (bool, String)> {
-    let out = ctx.tools.run("uv", &[OsStr::new("cache"), OsStr::new("dir")], QUERY_TIMEOUT);
+    let out = ctx.tools.run(
+        "uv",
+        &[OsStr::new("cache"), OsStr::new("dir")],
+        QUERY_TIMEOUT,
+    );
     let out = out.map_err(|e| (matches!(e, ToolError::Missing(_)), e.to_string()))?;
     if !out.ok() {
-        return Err((false, format!("uv cache dir failed: {}", first_line(&out.stderr))));
+        return Err((
+            false,
+            format!("uv cache dir failed: {}", first_line(&out.stderr)),
+        ));
     }
     Ok(PathBuf::from(out.stdout.trim()))
 }
@@ -117,7 +128,9 @@ fn uv_cache_dir(ctx: &ScanCtx) -> Result<PathBuf, (bool, String)> {
 /// prune would wait for an exclusive lock until it times out. The probe
 /// takes the exclusive lock without blocking and drops it at once.
 fn uv_cache_in_use(dir: &Path) -> bool {
-    let Ok(f) = std::fs::File::open(dir.join(".lock")) else { return false };
+    let Ok(f) = std::fs::File::open(dir.join(".lock")) else {
+        return false;
+    };
     matches!(f.try_lock(), Err(std::fs::TryLockError::WouldBlock))
 }
 
@@ -130,7 +143,10 @@ fn uv_prune_entry(ctx: &ScanCtx) -> Result<Entry, String> {
     }
     // A fresh InodeSet: this is a note about the whole cache, not plan bytes.
     let cache = measure(&dir, &mut InodeSet::default()).map_or(0, |m| m.bytes);
-    let mut note = format!("uv reports the size after it runs; cache is {}", crate::fmt::human_bytes(cache));
+    let mut note = format!(
+        "uv reports the size after it runs; cache is {}",
+        crate::fmt::human_bytes(cache)
+    );
     if uv_cache_in_use(&dir) {
         note.push_str("; in use by running uv processes now, so apply may skip it");
     }
@@ -138,7 +154,9 @@ fn uv_prune_entry(ctx: &ScanCtx) -> Result<Entry, String> {
         id: String::new(),
         category: ID.into(),
         title: UV_TITLE.into(),
-        kind: EntryKind::Operation { op: Operation::UvCachePrune },
+        kind: EntryKind::Operation {
+            op: Operation::UvCachePrune,
+        },
         bytes: 0,
         reason: "removes cache entries no venv uses (uv decides)".into(),
         selected: true,
@@ -153,15 +171,26 @@ fn uv_prune_entry(ctx: &ScanCtx) -> Result<Entry, String> {
 /// running uv holds the cache lock, instead of waiting out the timeout.
 fn uv_prune(ctx: &ScanCtx) -> Outcome {
     match uv_cache_dir(ctx) {
-        Ok(dir) if uv_cache_in_use(&dir) => return Outcome::Skipped { reason: UV_IN_USE.into() },
+        Ok(dir) if uv_cache_in_use(&dir) => {
+            return Outcome::Skipped {
+                reason: UV_IN_USE.into(),
+            };
+        }
         Ok(_) => {}
         Err((true, e)) => return Outcome::Skipped { reason: e },
         Err((false, e)) => return Outcome::Failed { error: e },
     }
-    match ctx.tools.run("uv", &[OsStr::new("cache"), OsStr::new("prune")], OP_TIMEOUT) {
+    match ctx.tools.run(
+        "uv",
+        &[OsStr::new("cache"), OsStr::new("prune")],
+        OP_TIMEOUT,
+    ) {
         Ok(out) if out.ok() => {
             let text = format!("{}\n{}", out.stdout, out.stderr);
-            Outcome::Deleted { bytes: removed_bytes(&text), failures: vec![] }
+            Outcome::Deleted {
+                bytes: removed_bytes(&text),
+                failures: vec![],
+            }
         }
         Ok(out) => Outcome::Failed {
             error: format!("{UV_TITLE} failed: {}", first_line(&out.stderr)),
@@ -169,8 +198,12 @@ fn uv_prune(ctx: &ScanCtx) -> Outcome {
         Err(ToolError::Timeout(_, secs)) => Outcome::Failed {
             error: format!("{UV_TITLE} timed out after {secs}s (uv cache in use?)"),
         },
-        Err(e @ ToolError::Missing(_)) => Outcome::Skipped { reason: e.to_string() },
-        Err(e) => Outcome::Failed { error: format!("{UV_TITLE} failed: {e}") },
+        Err(e @ ToolError::Missing(_)) => Outcome::Skipped {
+            reason: e.to_string(),
+        },
+        Err(e) => Outcome::Failed {
+            error: format!("{UV_TITLE} failed: {e}"),
+        },
     }
 }
 
@@ -179,7 +212,11 @@ const GO_TITLE: &str = "go clean -modcache";
 /// `go env GOMODCACHE`, or `Err(go is missing)`; `Ok(None)` for any other
 /// failure or an empty answer.
 fn go_modcache_dir(ctx: &ScanCtx) -> Result<Option<PathBuf>, ToolError> {
-    match ctx.tools.run("go", &[OsStr::new("env"), OsStr::new("GOMODCACHE")], QUERY_TIMEOUT) {
+    match ctx.tools.run(
+        "go",
+        &[OsStr::new("env"), OsStr::new("GOMODCACHE")],
+        QUERY_TIMEOUT,
+    ) {
         Ok(out) if out.ok() && !out.stdout.trim().is_empty() => {
             Ok(Some(PathBuf::from(out.stdout.trim())))
         }
@@ -193,7 +230,9 @@ fn go_modcache_dir(ctx: &ScanCtx) -> Result<Option<PathBuf>, ToolError> {
 /// module cache (an estimate; go decides what goes). `Ok(None)` when go
 /// names no usable directory.
 fn go_modcache_entry(ctx: &ScanCtx) -> Result<Option<Entry>, String> {
-    let Some(dir) = go_modcache_dir(ctx).map_err(|e| e.to_string())? else { return Ok(None) };
+    let Some(dir) = go_modcache_dir(ctx).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
     let is_dir = std::fs::symlink_metadata(&dir).is_ok_and(|md| md.is_dir());
     if !is_dir || ctx.protector.is_protected(&dir) {
         return Ok(None);
@@ -203,7 +242,9 @@ fn go_modcache_entry(ctx: &ScanCtx) -> Result<Option<Entry>, String> {
         id: String::new(),
         category: ID.into(),
         title: GO_TITLE.into(),
-        kind: EntryKind::Operation { op: Operation::GoCleanModcache },
+        kind: EntryKind::Operation {
+            op: Operation::GoCleanModcache,
+        },
         bytes,
         reason: "removes the whole Go module cache, including modules in use".into(),
         selected: false,
@@ -218,24 +259,39 @@ fn go_modcache_entry(ctx: &ScanCtx) -> Result<Option<Entry>, String> {
 fn go_clean(ctx: &ScanCtx) -> Outcome {
     let dir = match go_modcache_dir(ctx) {
         Ok(d) => d,
-        Err(e) => return Outcome::Skipped { reason: e.to_string() },
+        Err(e) => {
+            return Outcome::Skipped {
+                reason: e.to_string(),
+            };
+        }
     };
     let size = |d: &Option<PathBuf>| {
-        d.as_ref().and_then(|d| measure(d, &mut InodeSet::default()).ok()).map_or(0, |m| m.bytes)
+        d.as_ref()
+            .and_then(|d| measure(d, &mut InodeSet::default()).ok())
+            .map_or(0, |m| m.bytes)
     };
     let before = size(&dir);
-    match ctx.tools.run("go", &[OsStr::new("clean"), OsStr::new("-modcache")], OP_TIMEOUT) {
-        Ok(out) if out.ok() => {
-            Outcome::Deleted { bytes: before.saturating_sub(size(&dir)), failures: vec![] }
-        }
+    match ctx.tools.run(
+        "go",
+        &[OsStr::new("clean"), OsStr::new("-modcache")],
+        OP_TIMEOUT,
+    ) {
+        Ok(out) if out.ok() => Outcome::Deleted {
+            bytes: before.saturating_sub(size(&dir)),
+            failures: vec![],
+        },
         Ok(out) => Outcome::Failed {
             error: format!("{GO_TITLE} failed: {}", first_line(&out.stderr)),
         },
-        Err(ToolError::Timeout(_, secs)) => {
-            Outcome::Failed { error: format!("{GO_TITLE} timed out after {secs}s") }
-        }
-        Err(e @ ToolError::Missing(_)) => Outcome::Skipped { reason: e.to_string() },
-        Err(e) => Outcome::Failed { error: format!("{GO_TITLE} failed: {e}") },
+        Err(ToolError::Timeout(_, secs)) => Outcome::Failed {
+            error: format!("{GO_TITLE} timed out after {secs}s"),
+        },
+        Err(e @ ToolError::Missing(_)) => Outcome::Skipped {
+            reason: e.to_string(),
+        },
+        Err(e) => Outcome::Failed {
+            error: format!("{GO_TITLE} failed: {e}"),
+        },
     }
 }
 
@@ -252,7 +308,10 @@ fn removed_bytes(text: &str) -> u64 {
 }
 
 fn first_line(s: &str) -> &str {
-    s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("no error output")
+    s.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("no error output")
 }
 
 /// Children of `root` (not symlinks, not protected, not mount points) other
@@ -263,7 +322,9 @@ fn older_children(root: &Path, keep: usize, ctx: &ScanCtx) -> Vec<PathBuf> {
         Ok(md) if md.is_dir() => md.dev(),
         _ => return Vec::new(),
     };
-    let Ok(rd) = std::fs::read_dir(root) else { return Vec::new() };
+    let Ok(rd) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
     let mut kids: Vec<(i64, PathBuf)> = rd
         .flatten()
         .filter(|e| e.metadata().is_ok_and(|md| md.dev() == dev)) // lstat
@@ -278,14 +339,25 @@ fn older_children(root: &Path, keep: usize, ctx: &ScanCtx) -> Vec<PathBuf> {
 
 /// A one-target `Item` entry for `path` (titled under `~`), or `None` if it
 /// vanished or is a symlink (`measure`/`fingerprint` refuse symlinks).
-fn item(path: &Path, reason: &str, selected: bool, home: &Path, seen: &mut InodeSet) -> Option<Entry> {
+fn item(
+    path: &Path,
+    reason: &str,
+    selected: bool,
+    home: &Path,
+    seen: &mut InodeSet,
+) -> Option<Entry> {
     let fp = fingerprint(path).ok()?;
     let bytes = measure(path, seen).ok()?.bytes;
     Some(Entry {
         id: String::new(),
         category: ID.into(),
         title: crate::paths::tilde(path, home),
-        kind: EntryKind::Item { targets: vec![Target { path: path.to_path_buf(), fp }] },
+        kind: EntryKind::Item {
+            targets: vec![Target {
+                path: path.to_path_buf(),
+                fp,
+            }],
+        },
         bytes,
         reason: reason.into(),
         selected,

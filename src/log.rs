@@ -30,7 +30,11 @@ pub fn append(path: &Path, lines: &[LogLine]) -> anyhow::Result<()> {
         serde_json::to_writer(&mut buf, l)?;
         buf.push(b'\n');
     }
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).with_context(ctx)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(ctx)?;
     f.write_all(&buf).with_context(ctx)
 }
 

@@ -15,7 +15,9 @@ pub enum Object {
         fp: crate::plan::Fingerprint,
     },
     /// Deleted one by one by exact id/name; several refs only for grouped volumes (DECISION D6).
-    Docker { refs: Vec<DockerRef> },
+    Docker {
+        refs: Vec<DockerRef>,
+    },
     /// Exact generation numbers of one profile. root = true → via pkexec (DECISION D3).
     NixGenerations {
         #[serde(with = "crate::plan::path_codec")]

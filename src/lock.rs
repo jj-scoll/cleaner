@@ -24,7 +24,8 @@ impl Drop for RunLock {
 /// progress" if another open file (in any process) holds it.
 pub fn acquire(path: &Path) -> anyhow::Result<RunLock> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
     }
     let file = OpenOptions::new()
         .read(true)

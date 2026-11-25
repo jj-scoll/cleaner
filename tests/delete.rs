@@ -56,7 +56,11 @@ fn deletes_readonly_dirs() {
     mkfile(&root.join("pkg@v1/a/x.go"), 100);
     mkfile(&root.join("pkg@v1/b.go"), 100);
     for d in ["pkg@v1/a", "pkg@v1", ""] {
-        let p = if d.is_empty() { root.clone() } else { root.join(d) };
+        let p = if d.is_empty() {
+            root.clone()
+        } else {
+            root.join(d)
+        };
         fs::set_permissions(&p, Permissions::from_mode(0o555)).unwrap();
     }
     delete_tree(&root).unwrap();

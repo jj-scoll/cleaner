@@ -26,11 +26,20 @@ fn store_entry(id: &str, bytes: u64) -> Entry {
         glob: None,
         min_bytes: None,
     };
-    Entry { kind: EntryKind::StoreRule { rule }, ..entry(id, "caches", bytes, true) }
+    Entry {
+        kind: EntryKind::StoreRule { rule },
+        ..entry(id, "caches", bytes, true)
+    }
 }
 
 fn plan(entries: Vec<Entry>, report_only: Vec<Entry>, skipped: Vec<Skip>) -> Plan {
-    Plan { id: "20261111T030000Z".into(), created: 1_794_366_000, entries, skipped, report_only }
+    Plan {
+        id: "20261111T030000Z".into(),
+        created: 1_794_366_000,
+        entries,
+        skipped,
+        report_only,
+    }
 }
 
 fn ids(v: &[&str]) -> Vec<String> {
@@ -55,7 +64,10 @@ fn initial_selection_matches_plan() {
 #[test]
 fn toggle_and_totals() {
     let mut m = ReviewModel::new(plan(
-        vec![entry("trash:0", "trash", 4096, true), entry("trash:1", "trash", 1024, true)],
+        vec![
+            entry("trash:0", "trash", 4096, true),
+            entry("trash:1", "trash", 1024, true),
+        ],
         vec![],
         vec![],
     ));
@@ -74,7 +86,10 @@ fn toggle_and_totals() {
 #[test]
 fn filter_limits_selection() {
     let m = ReviewModel::new(plan(
-        vec![entry("caches:0", "caches", 10, true), entry("trash:0", "trash", 20, true)],
+        vec![
+            entry("caches:0", "caches", 10, true),
+            entry("trash:0", "trash", 20, true),
+        ],
         vec![],
         vec![],
     ));
@@ -107,7 +122,10 @@ fn report_only_cannot_be_selected() {
 #[test]
 fn confirm_copy() {
     let m = ReviewModel::new(plan(
-        vec![entry("trash:0", "trash", 1024, true), entry("trash:1", "trash", 1024, true)],
+        vec![
+            entry("trash:0", "trash", 1024, true),
+            entry("trash:1", "trash", 1024, true),
+        ],
         vec![],
         vec![],
     ));
@@ -120,13 +138,20 @@ fn confirm_copy() {
     );
 
     let m = ReviewModel::new(plan(
-        vec![entry("trash:0", "trash", 1024, true), store_entry("caches:0", 1024)],
+        vec![
+            entry("trash:0", "trash", 1024, true),
+            store_entry("caches:0", 1024),
+        ],
         vec![],
         vec![],
     ));
     let c = m.confirm(None);
     assert_eq!(c.heading, "Delete 2 items?");
-    assert!(c.body.ends_with(" Cache rule sizes are estimates."), "{}", c.body);
+    assert!(
+        c.body.ends_with(" Cache rule sizes are estimates."),
+        "{}",
+        c.body
+    );
     // Filtered to trash, no store rule is included.
     assert!(!m.confirm(Some("trash")).body.contains("estimates"));
     assert_eq!(m.confirm(Some("trash")).heading, "Delete 1 item?");
@@ -134,9 +159,16 @@ fn confirm_copy() {
 
 #[test]
 fn rows_mark_estimate_and_permanent() {
-    let permanent = Entry { permanent: true, ..entry("trash:0", "trash", 10, true) };
+    let permanent = Entry {
+        permanent: true,
+        ..entry("trash:0", "trash", 10, true)
+    };
     let m = ReviewModel::new(plan(
-        vec![store_entry("caches:0", 100), permanent, entry("trash:1", "trash", 5, true)],
+        vec![
+            store_entry("caches:0", 100),
+            permanent,
+            entry("trash:1", "trash", 5, true),
+        ],
         vec![],
         vec![],
     ));
@@ -154,9 +186,16 @@ fn rows_mark_estimate_and_permanent() {
 
 #[test]
 fn skipped_grouped_by_category() {
-    let skip = Skip { category: "trash".into(), title: "x".into(), reason: "git-tracked".into() };
+    let skip = Skip {
+        category: "trash".into(),
+        title: "x".into(),
+        reason: "git-tracked".into(),
+    };
     let m = ReviewModel::new(plan(
-        vec![entry("trash:0", "trash", 10, true), entry("caches:0", "caches", 10, true)],
+        vec![
+            entry("trash:0", "trash", 10, true),
+            entry("caches:0", "caches", 10, true),
+        ],
         vec![],
         vec![skip.clone()],
     ));
@@ -171,10 +210,16 @@ fn skipped_grouped_by_category() {
 fn operation_row_is_estimate_and_confirm_copy() {
     use cleaner::object::Operation;
     let op = Entry {
-        kind: EntryKind::Operation { op: Operation::UvCachePrune },
+        kind: EntryKind::Operation {
+            op: Operation::UvCachePrune,
+        },
         ..entry("caches:1", "caches", 1024, true)
     };
-    let m = ReviewModel::new(plan(vec![entry("trash:0", "trash", 1024, true), op.clone()], vec![], vec![]));
+    let m = ReviewModel::new(plan(
+        vec![entry("trash:0", "trash", 1024, true), op.clone()],
+        vec![],
+        vec![],
+    ));
     let groups = m.groups(None);
     let caches = groups.iter().find(|g| g.category == "caches").unwrap();
     assert!(caches.rows[0].estimate);
@@ -186,7 +231,11 @@ fn operation_row_is_estimate_and_confirm_copy() {
     );
 
     let m = ReviewModel::new(plan(
-        vec![entry("trash:0", "trash", 1024, true), op, store_entry("caches:0", 1024)],
+        vec![
+            entry("trash:0", "trash", 1024, true),
+            op,
+            store_entry("caches:0", 1024),
+        ],
         vec![],
         vec![],
     ));
@@ -202,12 +251,18 @@ fn password_suffix() {
     use cleaner::object::{Object, Operation};
     let sys = |selected| Entry {
         kind: EntryKind::Object {
-            obj: Object::NixGenerations { profile: "/p/system".into(), gens: vec![(1, "/nix/store/x".into())], root: true },
+            obj: Object::NixGenerations {
+                profile: "/p/system".into(),
+                gens: vec![(1, "/nix/store/x".into())],
+                root: true,
+            },
         },
         ..entry("nix:0", "nix", 1024, selected)
     };
     let gc = Entry {
-        kind: EntryKind::Operation { op: Operation::NixStoreGc },
+        kind: EntryKind::Operation {
+            op: Operation::NixStoreGc,
+        },
         ..entry("nix:1", "nix", 1024, true)
     };
     let m = ReviewModel::new(plan(vec![sys(false), gc.clone()], vec![], vec![]));
@@ -228,7 +283,11 @@ fn nix_closure_rows_are_estimates_in_confirm() {
     use cleaner::object::Object;
     let sys = Entry {
         kind: EntryKind::Object {
-            obj: Object::NixGenerations { profile: "/p/system".into(), gens: vec![(1, "/nix/store/x".into())], root: true },
+            obj: Object::NixGenerations {
+                profile: "/p/system".into(),
+                gens: vec![(1, "/nix/store/x".into())],
+                root: true,
+            },
         },
         ..entry("nix:0", "nix", 1024, true)
     };
@@ -246,9 +305,20 @@ fn nix_closure_rows_are_estimates_in_confirm() {
 fn aged(id: &str, title: &str, bytes: u64, mtimes: &[i64]) -> Entry {
     let targets = mtimes
         .iter()
-        .map(|&m| Target { path: format!("/p/{id}").into(), fp: Fingerprint { dev: 1, ino: 1, newest_mtime: m } })
+        .map(|&m| Target {
+            path: format!("/p/{id}").into(),
+            fp: Fingerprint {
+                dev: 1,
+                ino: 1,
+                newest_mtime: m,
+            },
+        })
         .collect();
-    Entry { title: title.into(), kind: EntryKind::Item { targets }, ..entry(id, "artifacts", bytes, true) }
+    Entry {
+        title: title.into(),
+        kind: EntryKind::Item { targets },
+        ..entry(id, "artifacts", bytes, true)
+    }
 }
 
 fn titles(rows: &[cleaner::view::review::Row]) -> Vec<String> {
@@ -259,7 +329,9 @@ fn titles(rows: &[cleaner::view::review::Row]) -> Vec<String> {
 fn groups_sort_by_size_name_or_age() {
     let op = Entry {
         title: "delta".into(),
-        kind: EntryKind::Operation { op: Operation::UvCachePrune },
+        kind: EntryKind::Operation {
+            op: Operation::UvCachePrune,
+        },
         ..entry("a:3", "artifacts", 5, true)
     };
     let mut m = ReviewModel::new(plan(
@@ -278,17 +350,32 @@ fn groups_sort_by_size_name_or_age() {
     assert_eq!(titles(&g.rows), ["Alpha", "gamma", "beta", "delta"]);
     assert_eq!(titles(&g.report_only), ["big", "small"]);
     m.set_sort(Sort::Name);
-    assert_eq!(titles(&m.groups(None)[0].rows), ["Alpha", "beta", "delta", "gamma"], "A-Z, ignoring case");
+    assert_eq!(
+        titles(&m.groups(None)[0].rows),
+        ["Alpha", "beta", "delta", "gamma"],
+        "A-Z, ignoring case"
+    );
     m.set_sort(Sort::Age);
-    assert_eq!(titles(&m.groups(None)[0].rows), ["beta", "Alpha", "gamma", "delta"], "oldest first, no age last");
+    assert_eq!(
+        titles(&m.groups(None)[0].rows),
+        ["beta", "Alpha", "gamma", "delta"],
+        "oldest first, no age last"
+    );
 }
 
 /// A category's own idea of when a thing was last used (a project's last
 /// edit or commit) wins over its folders' mtimes.
 #[test]
 fn age_sort_prefers_last_active() {
-    let fresh_folder_old_project = Entry { last_active: Some(10), ..aged("a:0", "old project", 1, &[900]) };
-    let mut m = ReviewModel::new(plan(vec![aged("a:1", "newer", 1, &[500]), fresh_folder_old_project], vec![], vec![]));
+    let fresh_folder_old_project = Entry {
+        last_active: Some(10),
+        ..aged("a:0", "old project", 1, &[900])
+    };
+    let mut m = ReviewModel::new(plan(
+        vec![aged("a:1", "newer", 1, &[500]), fresh_folder_old_project],
+        vec![],
+        vec![],
+    ));
     m.set_sort(Sort::Age);
     assert_eq!(titles(&m.groups(None)[0].rows), ["old project", "newer"]);
 }
@@ -300,5 +387,9 @@ fn sort_is_remembered_in_the_state_dir() {
     Sort::Age.save(dir.path()).unwrap();
     assert_eq!(Sort::load(dir.path()), Sort::Age);
     std::fs::write(dir.path().join("review_sort"), "sideways").unwrap();
-    assert_eq!(Sort::load(dir.path()), Sort::Size, "an unknown value falls back");
+    assert_eq!(
+        Sort::load(dir.path()),
+        Sort::Size,
+        "an unknown value falls back"
+    );
 }

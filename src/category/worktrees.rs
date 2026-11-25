@@ -33,13 +33,17 @@ fn artifact_patterns() -> Vec<Pattern> {
 }
 
 fn is_artifact(pats: &[Pattern], name: &OsStr) -> bool {
-    name.to_str().is_some_and(|n| pats.iter().any(|p| p.matches(n)))
+    name.to_str()
+        .is_some_and(|n| pats.iter().any(|p| p.matches(n)))
 }
 
 /// Newest file mtime under `wt`, not counting artifact dirs or `.git`, so
 /// deleting the worktree's build output doesn't make it look changed.
 fn newest_mtime(wt: &Path, pats: &[Pattern]) -> i64 {
-    newest_mtime_excluding(wt, &|p| p.file_name().is_some_and(|n| n == ".git" || is_artifact(pats, n)))
+    newest_mtime_excluding(wt, &|p| {
+        p.file_name()
+            .is_some_and(|n| n == ".git" || is_artifact(pats, n))
+    })
 }
 
 /// Why the worktree counts as finished, or None (DECISION D7: no fetching,
@@ -56,7 +60,8 @@ fn finished(main: &Path, branch: Option<&str>, head: &str) -> Option<String> {
         }
         Some(b) if git::upstream_gone(main, b) => Some(format!("upstream branch {b} is gone")),
         Some(_) => None,
-        None => git::is_ancestor(main, head, &default).then(|| format!("detached at a commit in {default}")),
+        None => git::is_ancestor(main, head, &default)
+            .then(|| format!("detached at a commit in {default}")),
     }
 }
 
@@ -77,14 +82,20 @@ fn verdict(main: &Path, info: &WorktreeInfo, pats: &[Pattern]) -> Verdict {
     if info.locked {
         return Verdict::Skip("locked");
     }
-    let Some(head) = &info.head else { return Verdict::NotFinished };
-    let Some(why) = finished(main, info.branch.as_deref(), head) else { return Verdict::NotFinished };
+    let Some(head) = &info.head else {
+        return Verdict::NotFinished;
+    };
+    let Some(why) = finished(main, info.branch.as_deref(), head) else {
+        return Verdict::NotFinished;
+    };
     match git::status(&info.path, false) {
         Some(st) if st.is_empty() => {}
         Some(_) => return Verdict::Skip("merged, but has uncommitted changes"),
         None => return Verdict::NotFinished,
     }
-    let Ok(md) = info.path.symlink_metadata() else { return Verdict::NotFinished };
+    let Ok(md) = info.path.symlink_metadata() else {
+        return Verdict::NotFinished;
+    };
     if has_mount(&info.path, md.dev(), &|n| is_artifact(pats, n)) {
         return Verdict::Skip("contains a mount point");
     }
@@ -94,13 +105,22 @@ fn verdict(main: &Path, info: &WorktreeInfo, pats: &[Pattern]) -> Verdict {
 /// True if `wt` is a linked git worktree that is finished: merged, clean,
 /// unlocked, no mount point. No idle or ignored-file rule.
 pub fn is_finished(wt: &Path) -> bool {
-    let Ok(real) = std::fs::canonicalize(wt) else { return false };
-    let Some(list) = git::worktree_list(&real) else { return false };
+    let Ok(real) = std::fs::canonicalize(wt) else {
+        return false;
+    };
+    let Some(list) = git::worktree_list(&real) else {
+        return false;
+    };
     let main = &list[0].path;
     list[1..]
         .iter()
         .find(|w| w.path == real)
-        .is_some_and(|info| matches!(verdict(main, info, &artifact_patterns()), Verdict::Finished(_)))
+        .is_some_and(|info| {
+            matches!(
+                verdict(main, info, &artifact_patterns()),
+                Verdict::Finished(_)
+            )
+        })
 }
 
 /// Ignored paths (`!!`) not inside an artifact-named dir (DECISION D1), or
@@ -118,7 +138,12 @@ fn ignored_outside_build(wt: &Path, pats: &[Pattern]) -> Option<Vec<String>> {
 /// Why `git worktree remove` must not run, if an ignored path in `wt` is
 /// protected or holds a nested repo or worktree (§5.3): git would delete it.
 /// Walks each ignored dir with lstat only.
-fn ignored_hazard(ctx: &ScanCtx, map: &HomeMap, wt: &Path, ignored: &[String]) -> Option<&'static str> {
+fn ignored_hazard(
+    ctx: &ScanCtx,
+    map: &HomeMap,
+    wt: &Path,
+    ignored: &[String],
+) -> Option<&'static str> {
     const PROTECTED: &str = "contains a protected path";
     for p in ignored {
         let top = wt.join(p);
@@ -127,7 +152,9 @@ fn ignored_hazard(ctx: &ScanCtx, map: &HomeMap, wt: &Path, ignored: &[String]) -
         }
         let mut stack = vec![top];
         while let Some(d) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&d) else { continue };
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
             for e in rd.flatten() {
                 let name = e.file_name();
                 if name == ".git" {
@@ -149,13 +176,18 @@ fn ignored_hazard(ctx: &ScanCtx, map: &HomeMap, wt: &Path, ignored: &[String]) -
 /// are not followed). `git worktree remove` would empty such a filesystem.
 /// Dirs whose name `skip` accepts are checked but not descended into.
 fn has_mount(dir: &Path, dev: u64, skip: &dyn Fn(&OsStr) -> bool) -> bool {
-    let parent_dev = dir.parent().and_then(|p| p.symlink_metadata().ok()).map(|m| m.dev());
+    let parent_dev = dir
+        .parent()
+        .and_then(|p| p.symlink_metadata().ok())
+        .map(|m| m.dev());
     if parent_dev.is_some_and(|d| d != dev) {
         return true;
     }
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             let Ok(md) = e.metadata() else { continue };
             if md.dev() != dev {
@@ -178,7 +210,10 @@ struct HomeMap<'a> {
 
 impl HomeMap<'_> {
     fn new(home: &Path) -> HomeMap<'_> {
-        HomeMap { home, real: std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf()) }
+        HomeMap {
+            home,
+            real: std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf()),
+        }
     }
 
     fn local(&self, p: &Path) -> PathBuf {
@@ -211,10 +246,21 @@ fn tracked_by_enclosing_repo(dir: &Path) -> bool {
 }
 
 fn skip(title: String, reason: &str) -> Skip {
-    Skip { category: ID.into(), title, reason: reason.into() }
+    Skip {
+        category: ID.into(),
+        title,
+        reason: reason.into(),
+    }
 }
 
-fn entry(title: String, obj: Object, bytes: u64, reason: String, selected: bool, note: Option<String>) -> Entry {
+fn entry(
+    title: String,
+    obj: Object,
+    bytes: u64,
+    reason: String,
+    selected: bool,
+    note: Option<String>,
+) -> Entry {
     Entry {
         id: String::new(),
         category: ID.into(),
@@ -250,8 +296,12 @@ impl Worktrees {
             Verdict::Skip(reason) => return out.skipped.push(skip(title, reason)),
         };
         let Some(head) = &info.head else { return };
-        let Ok(md) = wt.symlink_metadata() else { return };
-        let Some(ignored) = ignored_outside_build(wt, pats) else { return };
+        let Ok(md) = wt.symlink_metadata() else {
+            return;
+        };
+        let Some(ignored) = ignored_outside_build(wt, pats) else {
+            return;
+        };
         if let Some(reason) = ignored_hazard(ctx, map, wt, &ignored) {
             return out.skipped.push(skip(title, reason));
         }
@@ -259,12 +309,19 @@ impl Worktrees {
         let idle = ctx.now - newest.max(git::last_commit_time(wt).unwrap_or(0));
         let bytes = match measure(wt, seen) {
             Ok(m) => m.bytes,
-            Err(e) => return out.skipped.push(skip(title, &format!("cannot measure: {e}"))),
+            Err(e) => {
+                return out
+                    .skipped
+                    .push(skip(title, &format!("cannot measure: {e}")));
+            }
         };
         let (selected, note) = if ignored.is_empty() {
             (idle > cfg.idle_days as i64 * 86_400, None)
         } else {
-            let mut note = format!("has ignored files outside build dirs: {}", ignored[..ignored.len().min(NOTE_PATHS)].join(", "));
+            let mut note = format!(
+                "has ignored files outside build dirs: {}",
+                ignored[..ignored.len().min(NOTE_PATHS)].join(", ")
+            );
             if ignored.len() > NOTE_PATHS {
                 note.push_str(&format!(" (+{} more)", ignored.len() - NOTE_PATHS));
             }
@@ -281,11 +338,26 @@ impl Worktrees {
             ignored,
         };
         let reason = format!("{why} · idle {}", plural(idle.max(0) / 86_400, "day"));
-        out.entries.push(entry(title, Object::Worktree(r), bytes, reason, selected, note));
+        out.entries.push(entry(
+            title,
+            Object::Worktree(r),
+            bytes,
+            reason,
+            selected,
+            note,
+        ));
     }
 
     /// DECISION D2: listed, never pre-selected.
-    fn scan_orphan(&self, ctx: &ScanCtx, map: &HomeMap, pats: &[Pattern], dir: &Path, seen: &mut InodeSet, out: &mut ScanOutput) {
+    fn scan_orphan(
+        &self,
+        ctx: &ScanCtx,
+        map: &HomeMap,
+        pats: &[Pattern],
+        dir: &Path,
+        seen: &mut InodeSet,
+        out: &mut ScanOutput,
+    ) {
         let title = map.title(dir);
         if tracked_by_enclosing_repo(dir) {
             return out.skipped.push(skip(title, "tracked in git"));
@@ -293,7 +365,11 @@ impl Worktrees {
         let res = fingerprint(dir).and_then(|fp| Ok((fp, measure(dir, seen)?)));
         let (fp, m) = match res {
             Ok(x) => x,
-            Err(e) => return out.skipped.push(skip(title, &format!("cannot measure: {e}"))),
+            Err(e) => {
+                return out
+                    .skipped
+                    .push(skip(title, &format!("cannot measure: {e}")));
+            }
         };
         let idle = ctx.now - newest_mtime(dir, pats);
         let days = plural(idle.max(0) / 86_400, "day");
@@ -301,21 +377,35 @@ impl Worktrees {
         let (reason, note) = match git::missing_main_repo(dir) {
             Some(repo) => {
                 let gone = format!("main repo {} not found", map.local(&repo).display());
-                (format!("{gone} · idle {days}"), format!("{gone}; it can't check for uncommitted work"))
+                (
+                    format!("{gone} · idle {days}"),
+                    format!("{gone}; it can't check for uncommitted work"),
+                )
             }
-            None => (format!("worktree git no longer lists · idle {days}"), ORPHAN_NOTE.into()),
+            None => (
+                format!("worktree git no longer lists · idle {days}"),
+                ORPHAN_NOTE.into(),
+            ),
         };
-        let obj = Object::OrphanWorktree { path: dir.to_path_buf(), fp };
-        out.entries.push(entry(title, obj, m.bytes, reason, false, Some(note)));
+        let obj = Object::OrphanWorktree {
+            path: dir.to_path_buf(),
+            fp,
+        };
+        out.entries
+            .push(entry(title, obj, m.bytes, reason, false, Some(note)));
     }
 
     /// Re-checks a planned worktree (§6.4) and removes it with git.
     fn apply_worktree(&self, r: &WorktreeRef, ctx: &ScanCtx) -> Outcome {
-        let skipped = |reason: &str| Outcome::Skipped { reason: reason.into() };
+        let skipped = |reason: &str| Outcome::Skipped {
+            reason: reason.into(),
+        };
         let map = HomeMap::new(ctx.home);
         let md = match std::fs::symlink_metadata(&r.path) {
             Ok(md) => md,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return skipped("no longer exists"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return skipped("no longer exists");
+            }
             Err(e) => return skipped(&format!("cannot inspect: {e}")),
         };
         if md.file_type().is_symlink() {
@@ -333,8 +423,11 @@ impl Worktrees {
         if git::head(&r.path).as_deref() != Some(r.head.as_str()) {
             return skipped("new commits since plan");
         }
-        let listed = git::worktree_list(&r.main).and_then(|l| l.into_iter().skip(1).find(|w| w.path == r.path));
-        let Some(info) = listed else { return skipped("no longer listed by git") };
+        let listed = git::worktree_list(&r.main)
+            .and_then(|l| l.into_iter().skip(1).find(|w| w.path == r.path));
+        let Some(info) = listed else {
+            return skipped("no longer listed by git");
+        };
         if info.branch != r.branch {
             return skipped("branch changed since plan");
         }
@@ -347,7 +440,9 @@ impl Worktrees {
         let pats = artifact_patterns();
         // D1 at apply too: a file moved in keeps its old mtime, so check 6
         // alone can't see it.
-        let Some(ignored) = ignored_outside_build(&r.path, &pats) else { return skipped("cannot list ignored files") };
+        let Some(ignored) = ignored_outside_build(&r.path, &pats) else {
+            return skipped("cannot list ignored files");
+        };
         if ignored != r.ignored {
             return skipped(if r.ignored.is_empty() {
                 "has ignored files outside build dirs now"
@@ -361,9 +456,14 @@ impl Worktrees {
         if newest_mtime(&r.path, &pats) != r.newest_mtime {
             return skipped("changed since plan");
         }
-        let bytes = measure(&r.path, &mut InodeSet::default()).map(|m| m.bytes).unwrap_or(0);
+        let bytes = measure(&r.path, &mut InodeSet::default())
+            .map(|m| m.bytes)
+            .unwrap_or(0);
         match git::worktree_remove(&r.main, &r.path) {
-            Ok(()) => Outcome::Deleted { bytes, failures: Vec::new() },
+            Ok(()) => Outcome::Deleted {
+                bytes,
+                failures: Vec::new(),
+            },
             Err(msg) => skipped(&format!("git refused: {msg}")),
         }
     }
@@ -374,7 +474,9 @@ impl Worktrees {
         let skipped = |reason: String| Outcome::Skipped { reason };
         let md = match std::fs::symlink_metadata(path) {
             Ok(md) => md,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return skipped("no longer exists".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return skipped("no longer exists".into());
+            }
             Err(e) => return skipped(format!("cannot inspect: {e}")),
         };
         if md.file_type().is_symlink() {
@@ -392,8 +494,13 @@ impl Worktrees {
             return skipped("tracked in git".into());
         }
         match delete_tree(path) {
-            Ok(bytes) => Outcome::Deleted { bytes, failures: Vec::new() },
-            Err(e) => Outcome::Failed { error: format!("delete failed: {e}") },
+            Ok(bytes) => Outcome::Deleted {
+                bytes,
+                failures: Vec::new(),
+            },
+            Err(e) => Outcome::Failed {
+                error: format!("delete failed: {e}"),
+            },
         }
     }
 }
@@ -415,13 +522,17 @@ impl Category for Worktrees {
 
         let (mut repos, mut linked) = (Vec::new(), Vec::new());
         let prune = |p: &Path| p.file_name().is_some_and(|n| is_artifact(&pats, n));
-        crate::walk::walk_dirs(&roots, cfg.max_depth, ctx.protector, &prune, &mut |dir, _| {
-            match dir.join(".git").symlink_metadata() {
+        crate::walk::walk_dirs(
+            &roots,
+            cfg.max_depth,
+            ctx.protector,
+            &prune,
+            &mut |dir, _| match dir.join(".git").symlink_metadata() {
                 Ok(m) if m.is_dir() => repos.push(dir.to_path_buf()),
                 Ok(m) if m.is_file() => linked.push(dir.to_path_buf()),
                 _ => {}
-            }
-        });
+            },
+        );
 
         // Each repo's worktree list once, keyed by its main worktree. A linked
         // worktree whose main repo the walk didn't reach adds its own list.
@@ -451,16 +562,24 @@ impl Category for Worktrees {
             }
         }
 
-        let real_roots: Vec<PathBuf> = roots.iter().filter_map(|r| std::fs::canonicalize(r).ok()).collect();
+        let real_roots: Vec<PathBuf> = roots
+            .iter()
+            .filter_map(|r| std::fs::canonicalize(r).ok())
+            .collect();
         let in_roots = |p: &Path| {
             let local = map.local(p);
-            roots.iter().any(|r| local.starts_with(r)) || real_roots.iter().any(|r| p.starts_with(r))
+            roots.iter().any(|r| local.starts_with(r))
+                || real_roots.iter().any(|r| p.starts_with(r))
         };
         for list in &lists {
             let main = &list[0].path;
             for info in &list[1..] {
                 let is_dir = info.path.symlink_metadata().is_ok_and(|m| m.is_dir());
-                if info.prunable || !is_dir || !in_roots(&info.path) || protected(ctx, &map, &info.path) {
+                if info.prunable
+                    || !is_dir
+                    || !in_roots(&info.path)
+                    || protected(ctx, &map, &info.path)
+                {
                     continue;
                 }
                 self.scan_linked(ctx, &map, &pats, main, info, seen, &mut out);
@@ -476,8 +595,12 @@ impl Category for Worktrees {
 
     fn apply(&self, entry: &Entry, ctx: &ScanCtx) -> Outcome {
         match &entry.kind {
-            EntryKind::Object { obj: Object::Worktree(r) } => self.apply_worktree(r, ctx),
-            EntryKind::Object { obj: Object::OrphanWorktree { path, fp } } => self.apply_orphan(path, fp, ctx),
+            EntryKind::Object {
+                obj: Object::Worktree(r),
+            } => self.apply_worktree(r, ctx),
+            EntryKind::Object {
+                obj: Object::OrphanWorktree { path, fp },
+            } => self.apply_orphan(path, fp, ctx),
             _ => crate::category::apply_default(entry, ctx),
         }
     }

@@ -54,7 +54,15 @@ pub fn is_tracked(repo: &Path, p: &Path) -> bool {
     } else {
         rel
     };
-    match git(repo, &["ls-files".as_ref(), "-z".as_ref(), "--".as_ref(), rel.as_os_str()]) {
+    match git(
+        repo,
+        &[
+            "ls-files".as_ref(),
+            "-z".as_ref(),
+            "--".as_ref(),
+            rel.as_os_str(),
+        ],
+    ) {
         Some(out) => !out.stdout.is_empty(),
         None => true,
     }
@@ -62,7 +70,10 @@ pub fn is_tracked(repo: &Path, p: &Path) -> bool {
 
 /// Committer time (Unix seconds) of HEAD, or None if not a repo / no commits.
 pub fn last_commit_time(repo: &Path) -> Option<i64> {
-    let out = git(repo, &["log".as_ref(), "-1".as_ref(), "--format=%ct".as_ref()])?;
+    let out = git(
+        repo,
+        &["log".as_ref(), "-1".as_ref(), "--format=%ct".as_ref()],
+    )?;
     String::from_utf8(out.stdout).ok()?.trim().parse().ok()
 }
 
@@ -86,7 +97,15 @@ fn stdout(repo: &Path, args: &[&str]) -> Option<String> {
 
 /// `git worktree list --porcelain -z`; `[0]` is the main worktree.
 pub fn worktree_list(repo: &Path) -> Option<Vec<WorktreeInfo>> {
-    let out = git(repo, &["worktree".as_ref(), "list".as_ref(), "--porcelain".as_ref(), "-z".as_ref()])?;
+    let out = git(
+        repo,
+        &[
+            "worktree".as_ref(),
+            "list".as_ref(),
+            "--porcelain".as_ref(),
+            "-z".as_ref(),
+        ],
+    )?;
     let mut list = Vec::new();
     let mut cur: Option<WorktreeInfo> = None;
     // Attributes are NUL-terminated; an empty field ends a record.
@@ -128,13 +147,26 @@ pub fn worktree_list(repo: &Path) -> Option<Vec<WorktreeInfo>> {
 
 /// origin/HEAD's target (e.g. `origin/main`), else local `main`, else `master`.
 pub fn default_branch(repo: &Path) -> Option<String> {
-    if let Some(s) = stdout(repo, &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]) {
+    if let Some(s) = stdout(
+        repo,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    ) {
         let s = s.trim();
         if !s.is_empty() {
             return Some(s.to_string());
         }
     }
-    if stdout(repo, &["rev-parse", "--verify", "--quiet", "refs/heads/main"]).is_some() {
+    if stdout(
+        repo,
+        &["rev-parse", "--verify", "--quiet", "refs/heads/main"],
+    )
+    .is_some()
+    {
         return Some("main".into());
     }
     Some("master".into())
@@ -148,7 +180,8 @@ pub fn is_ancestor(repo: &Path, commit: &str, of: &str) -> bool {
 /// True if `refs/heads/<branch>`'s upstream is `[gone]`.
 pub fn upstream_gone(repo: &Path, branch: &str) -> bool {
     let r = format!("refs/heads/{branch}");
-    stdout(repo, &["for-each-ref", "--format=%(upstream:track)", &r]).is_some_and(|s| s.trim() == "[gone]")
+    stdout(repo, &["for-each-ref", "--format=%(upstream:track)", &r])
+        .is_some_and(|s| s.trim() == "[gone]")
 }
 
 /// `status --porcelain=v1 -z --untracked-files=all [--ignored=matching]` as
@@ -178,7 +211,13 @@ pub fn status(wt: &Path, ignored: bool) -> Option<Vec<(String, PathBuf)>> {
 /// Commits on local branches that no remote-tracking ref has
 /// (`rev-list --count --branches --not --remotes`); None if git fails.
 pub fn unpushed_commits(repo: &Path) -> Option<usize> {
-    stdout(repo, &["rev-list", "--count", "--branches", "--not", "--remotes"])?.trim().parse().ok()
+    stdout(
+        repo,
+        &["rev-list", "--count", "--branches", "--not", "--remotes"],
+    )?
+    .trim()
+    .parse()
+    .ok()
 }
 
 /// True if `git remote` names any remote; any failure counts as none.
@@ -195,8 +234,15 @@ pub fn head(wt: &Path) -> Option<String> {
 /// `git -C main worktree remove -- wt`, never with `--force`, so git refuses
 /// a dirty or locked worktree itself. `Err` is git's stderr, trimmed.
 pub fn worktree_remove(main: &Path, wt: &Path) -> Result<(), String> {
-    let args: [&OsStr; 4] = ["worktree".as_ref(), "remove".as_ref(), "--".as_ref(), wt.as_os_str()];
-    let out = command(main, &args).output().map_err(|e| format!("can't run git: {e}"))?;
+    let args: [&OsStr; 4] = [
+        "worktree".as_ref(),
+        "remove".as_ref(),
+        "--".as_ref(),
+        wt.as_os_str(),
+    ];
+    let out = command(main, &args)
+        .output()
+        .map_err(|e| format!("can't run git: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
@@ -217,7 +263,9 @@ fn gitdir_named(wt: &Path) -> Option<PathBuf> {
 /// The linked worktree's gitdir from its `.git` file, if that dir exists.
 pub fn linked_gitdir(wt: &Path) -> Option<PathBuf> {
     let dir = gitdir_named(wt)?;
-    std::fs::metadata(&dir).is_ok_and(|m| m.is_dir()).then_some(dir)
+    std::fs::metadata(&dir)
+        .is_ok_and(|m| m.is_dir())
+        .then_some(dir)
 }
 
 /// The main repo a linked worktree's `.git` file points into
@@ -225,7 +273,9 @@ pub fn linked_gitdir(wt: &Path) -> Option<PathBuf> {
 /// missing entirely, e.g. deleted or on an unmounted filesystem.
 pub fn missing_main_repo(wt: &Path) -> Option<PathBuf> {
     let dir = gitdir_named(wt)?;
-    let wts = dir.parent().filter(|p| p.file_name() == Some(OsStr::new("worktrees")))?;
+    let wts = dir
+        .parent()
+        .filter(|p| p.file_name() == Some(OsStr::new("worktrees")))?;
     let common = wts.parent()?;
     if common.symlink_metadata().is_ok() {
         return None;

@@ -43,7 +43,11 @@ label.tag { padding: 1px 8px; border-radius: 999px; font-size: smaller; font-wei
 /// Refuses to close `window` while `busy` is set, calling `on_blocked` instead.
 /// Closing mid-clean would exit the process mid-delete, before the run's log
 /// lines are written.
-pub fn block_close_while(window: &impl IsA<gtk::Window>, busy: Rc<Cell<bool>>, on_blocked: impl Fn() + 'static) {
+pub fn block_close_while(
+    window: &impl IsA<gtk::Window>,
+    busy: Rc<Cell<bool>>,
+    on_blocked: impl Fn() + 'static,
+) {
     window.connect_close_request(move |_| {
         if busy.get() {
             on_blocked();
@@ -99,7 +103,11 @@ struct App {
 /// `e:#`, or the lock copy when the run lock was held.
 fn error_text(e: &anyhow::Error) -> String {
     let text = format!("{e:#}");
-    if text.contains("another cleaner run is in progress") { LOCK_COPY.to_string() } else { text }
+    if text.contains("another cleaner run is in progress") {
+        LOCK_COPY.to_string()
+    } else {
+        text
+    }
 }
 
 impl App {
@@ -127,7 +135,15 @@ impl App {
                 move || toasts.add_toast(adw::Toast::new("Wait for the clean to finish"))
             ),
         );
-        let this = Rc::new(App { window, toasts, nav, dashboard, paths, latest: RefCell::new(None), cleaning });
+        let this = Rc::new(App {
+            window,
+            toasts,
+            nav,
+            dashboard,
+            paths,
+            latest: RefCell::new(None),
+            cleaning,
+        });
 
         // The page callbacks hold the App strongly: that cycle is what keeps
         // it alive for as long as the window (one window per process).
@@ -143,11 +159,14 @@ impl App {
         let app = this.clone();
         this.dashboard.connect_clean_all(move || app.clean_all());
         let app = this.clone();
-        this.dashboard.connect_menu("history", move || app.open_history());
+        this.dashboard
+            .connect_menu("history", move || app.open_history());
         let app = this.clone();
-        this.dashboard.connect_menu("settings", move || app.open_settings());
+        this.dashboard
+            .connect_menu("settings", move || app.open_settings());
         let app = this.clone();
-        this.dashboard.connect_menu("disk", move || app.open_usage(None));
+        this.dashboard
+            .connect_menu("disk", move || app.open_usage(None));
         let app = this.clone();
         this.dashboard.connect_disk(move || app.open_usage(None));
 
@@ -168,7 +187,8 @@ impl App {
     }
 
     fn toast(&self, text: &str) {
-        self.toasts.add_toast(adw::Toast::builder().title(text).use_markup(false).build());
+        self.toasts
+            .add_toast(adw::Toast::builder().title(text).use_markup(false).build());
     }
 
     fn alert(&self, heading: &str, body: &str) {
@@ -191,9 +211,13 @@ impl App {
     /// Re-reads disks, the latest plan and the log, and redraws the dashboard.
     fn refresh(&self) {
         // Display only: fall back to the default filesystems if the config is broken.
-        let config = config::load(&self.paths.config_file).map(|(c, _)| c).unwrap_or_default();
+        let config = config::load(&self.paths.config_file)
+            .map(|(c, _)| c)
+            .unwrap_or_default();
         let fs = crate::disk::usage(&filesystem_paths(&config, &self.paths.home));
-        let latest = match Plan::latest(&self.paths.plans_dir).and_then(|p| p.map(|p| Plan::load(&p)).transpose()) {
+        let latest = match Plan::latest(&self.paths.plans_dir)
+            .and_then(|p| p.map(|p| Plan::load(&p)).transpose())
+        {
             Ok(p) => p,
             Err(e) => {
                 self.toast(&format!("{e:#}"));
@@ -212,11 +236,21 @@ impl App {
     fn scan(self: &Rc<Self>) {
         let Some(config) = self.config() else { return };
         let paths = self.paths.clone();
-        self.dashboard.set_busy(Some(&Progress { done: 0, total: 0, current: String::new() }));
+        self.dashboard.set_busy(Some(&Progress {
+            done: 0,
+            total: 0,
+            current: String::new(),
+        }));
         let (on_progress, on_done) = (Rc::downgrade(self), Rc::downgrade(self));
         worker::run(
             move |progress| {
-                plan_and_save(&paths, &config, jiff::Timestamp::now().as_second(), progress).map(|_| ())
+                plan_and_save(
+                    &paths,
+                    &config,
+                    jiff::Timestamp::now().as_second(),
+                    progress,
+                )
+                .map(|_| ())
             },
             move |p| {
                 if let Some(app) = on_progress.upgrade() {
@@ -260,7 +294,9 @@ impl App {
 
     /// Every selected entry of the latest plan, after the same confirmation.
     fn clean_all(self: &Rc<Self>) {
-        let Some(plan) = self.latest.borrow().clone() else { return };
+        let Some(plan) = self.latest.borrow().clone() else {
+            return;
+        };
         let model = ReviewModel::new(plan.clone());
         let ids = model.selected_ids(None);
         if ids.is_empty() {
@@ -281,7 +317,11 @@ impl App {
     /// on failure (e.g. the lock is held) shows why and stays on the page.
     fn apply(self: &Rc<Self>, plan: Plan, ids: Vec<String>) {
         let Some(config) = self.config() else { return };
-        let label = gtk::Label::builder().label("Deleting…").xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::Middle).build();
+        let label = gtk::Label::builder()
+            .label("Deleting…")
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
+            .build();
         let bar = gtk::ProgressBar::new();
         let body = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -293,11 +333,19 @@ impl App {
             .build();
         body.append(&label);
         body.append(&bar);
-        let header = adw::HeaderBar::builder().show_end_title_buttons(false).show_start_title_buttons(false).build();
+        let header = adw::HeaderBar::builder()
+            .show_end_title_buttons(false)
+            .show_start_title_buttons(false)
+            .build();
         let content = adw::ToolbarView::new();
         content.add_top_bar(&header);
         content.set_content(Some(&body));
-        let dialog = adw::Dialog::builder().title("Cleaning").content_width(420).can_close(false).child(&content).build();
+        let dialog = adw::Dialog::builder()
+            .title("Cleaning")
+            .content_width(420)
+            .can_close(false)
+            .child(&content)
+            .build();
         dialog.present(Some(&self.window));
 
         let paths = self.paths.clone();
@@ -308,9 +356,17 @@ impl App {
         worker::run(
             move |progress| apply_selected(&paths, &config, &job_plan, &ids, progress),
             move |p| {
-                let text = if p.current.is_empty() { "Finishing…".to_string() } else { format!("Deleting {}…", p.current) };
+                let text = if p.current.is_empty() {
+                    "Finishing…".to_string()
+                } else {
+                    format!("Deleting {}…", p.current)
+                };
                 label.set_label(&text);
-                bar.set_fraction(if p.total == 0 { 0.0 } else { p.done as f64 / p.total as f64 });
+                bar.set_fraction(if p.total == 0 {
+                    0.0
+                } else {
+                    p.done as f64 / p.total as f64
+                });
             },
             move |result| {
                 cleaning.set(false);
@@ -339,16 +395,25 @@ impl App {
         let deleted = count(|o| matches!(o, Outcome::Deleted { .. }));
         let skipped = count(|o| matches!(o, Outcome::Skipped { .. }));
         let failed = count(|o| matches!(o, Outcome::Failed { .. }));
-        let mut body = format!("{deleted} deleted, {skipped} skipped, {failed} failed\n\nFreed (filesystem free space after minus before):");
+        let mut body = format!(
+            "{deleted} deleted, {skipped} skipped, {failed} failed\n\nFreed (filesystem free space after minus before):"
+        );
         for (label, delta) in &report.freed_by_fs {
             let sign = if *delta < 0 { "-" } else { "" };
-            body.push_str(&format!("\n{label}: {sign}{}", human_bytes(delta.unsigned_abs())));
+            body.push_str(&format!(
+                "\n{label}: {sign}{}",
+                human_bytes(delta.unsigned_abs())
+            ));
         }
         let problems: Vec<String> = report
             .results
             .iter()
             .filter_map(|(id, outcome)| {
-                let title = plan.entries.iter().find(|e| &e.id == id).map_or(id.as_str(), |e| e.title.as_str());
+                let title = plan
+                    .entries
+                    .iter()
+                    .find(|e| &e.id == id)
+                    .map_or(id.as_str(), |e| e.title.as_str());
                 match outcome {
                     Outcome::Skipped { reason } => Some(format!("skipped  {title}: {reason}")),
                     Outcome::Failed { error } => Some(format!("failed  {title}: {error}")),
@@ -358,7 +423,12 @@ impl App {
             .collect();
         let d = adw::AlertDialog::new(Some("Clean finished"), Some(&body));
         if !problems.is_empty() {
-            let list = gtk::Label::builder().label(problems.join("\n")).xalign(0.0).wrap(true).selectable(true).build();
+            let list = gtk::Label::builder()
+                .label(problems.join("\n"))
+                .xalign(0.0)
+                .wrap(true)
+                .selectable(true)
+                .build();
             let scrolled = gtk::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Never)
                 .propagate_natural_height(true)
@@ -429,11 +499,15 @@ impl App {
             let Some(app) = app.upgrade() else { return };
             let file = gtk::gio::File::for_path(&p);
             let weak = Rc::downgrade(&app);
-            gtk::FileLauncher::new(Some(&file)).launch(Some(&app.window), gtk::gio::Cancellable::NONE, move |r| {
-                if let (Err(e), Some(app)) = (r, weak.upgrade()) {
-                    app.toast(&format!("{e}"));
-                }
-            });
+            gtk::FileLauncher::new(Some(&file)).launch(
+                Some(&app.window),
+                gtk::gio::Cancellable::NONE,
+                move |r| {
+                    if let (Err(e), Some(app)) = (r, weak.upgrade()) {
+                        app.toast(&format!("{e}"));
+                    }
+                },
+            );
         });
         self.nav.push(&page.page());
     }
@@ -474,7 +548,10 @@ impl App {
             .and_then(|exe| crate::timer::refresh_if_installed(&self.paths, new, &exe));
         match timer {
             Ok(_) => self.toast("Settings saved"),
-            Err(e) => self.alert("Settings saved, but the timer wasn't updated", &format!("{e:#}")),
+            Err(e) => self.alert(
+                "Settings saved, but the timer wasn't updated",
+                &format!("{e:#}"),
+            ),
         }
         self.refresh();
     }

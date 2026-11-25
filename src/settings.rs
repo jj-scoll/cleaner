@@ -22,7 +22,9 @@ impl ConfigDoc {
             Err(e) if e.kind() == ErrorKind::NotFound => DEFAULT_CONFIG_TOML.to_string(),
             Err(e) => return Err(e).with_context(ctx),
         };
-        Ok(ConfigDoc { doc: text.parse().with_context(ctx)? })
+        Ok(ConfigDoc {
+            doc: text.parse().with_context(ctx)?,
+        })
     }
 
     /// The document as a `Config`, parsed like `config::load` (warnings dropped).
@@ -141,7 +143,13 @@ impl ConfigDoc {
         if n.artifacts.roots.is_none() && o.artifacts.roots.is_some() {
             table(root, "artifacts")?.remove("roots");
         }
-        let keeps = |c: &Config| c.caches.keep_newest.iter().map(|k| k.keep).collect::<Vec<_>>();
+        let keeps = |c: &Config| {
+            c.caches
+                .keep_newest
+                .iter()
+                .map(|k| k.keep)
+                .collect::<Vec<_>>()
+        };
         if keeps(n) != keeps(o) {
             write_keep_newest(table(root, "caches")?, &n.caches.keep_newest)?;
         }
@@ -196,26 +204,41 @@ pub fn validate(c: &Config) -> Result<(), Vec<String>> {
     }
     for r in &c.user_rules {
         if !(r.path.starts_with("~/") || r.path.starts_with('/')) {
-            errors.push(format!("folder rule path must start with ~/ or / ({})", r.path));
+            errors.push(format!(
+                "folder rule path must start with ~/ or / ({})",
+                r.path
+            ));
         }
         let rest = Path::new(r.path.strip_prefix('~').unwrap_or(&r.path));
         if rest.components().any(|c| c == Component::ParentDir) {
             errors.push(format!("folder rule path can't contain .. ({})", r.path));
         } else if !rest.components().any(|c| matches!(c, Component::Normal(_))) {
-            errors.push(format!("folder rule can't be the whole home or root ({})", r.path));
+            errors.push(format!(
+                "folder rule can't be the whole home or root ({})",
+                r.path
+            ));
         }
         if r.max_age_days < 1 {
-            errors.push(format!("folder rule age must be at least 1 day ({})", r.path));
+            errors.push(format!(
+                "folder rule age must be at least 1 day ({})",
+                r.path
+            ));
         }
         if let Some(Err(e)) = r.glob.as_deref().map(glob::Pattern::new) {
             errors.push(format!("bad glob in folder rule {}: {e}", r.path));
         }
     }
-    if errors.is_empty() { Ok(()) } else { Err(errors) }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 fn int(n: u64) -> anyhow::Result<Value> {
-    Ok(i64::try_from(n).with_context(|| format!("{n} is too large for config.toml"))?.into())
+    Ok(i64::try_from(n)
+        .with_context(|| format!("{n} is too large for config.toml"))?
+        .into())
 }
 
 fn strings(v: &[String]) -> Value {
@@ -253,7 +276,10 @@ fn write_keep_newest(caches: &mut dyn TableLike, keeps: &[KeepNewestCfg]) -> any
         .and_then(Item::as_array_of_tables)
         .is_some_and(|aot| aot.len() == keeps.len());
     if in_place {
-        let aot = caches.get_mut("keep_newest").and_then(Item::as_array_of_tables_mut).expect("checked above");
+        let aot = caches
+            .get_mut("keep_newest")
+            .and_then(Item::as_array_of_tables_mut)
+            .expect("checked above");
         for (t, k) in aot.iter_mut().zip(keeps) {
             set(t, "keep", int(k.keep as u64)?);
         }
@@ -293,7 +319,10 @@ fn write_rules(root: &mut Table, rules: &[StoreCfg]) -> anyhow::Result<()> {
         root.insert("user_rules", toml_edit::value(toml_edit::Array::new()));
         return Ok(());
     }
-    if let Some(aot) = root.get_mut("user_rules").and_then(Item::as_array_of_tables_mut) {
+    if let Some(aot) = root
+        .get_mut("user_rules")
+        .and_then(Item::as_array_of_tables_mut)
+    {
         while aot.len() > rules.len() {
             aot.remove(aot.len() - 1);
         }

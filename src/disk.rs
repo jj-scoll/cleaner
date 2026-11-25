@@ -17,11 +17,15 @@ pub fn usage(paths: &[PathBuf]) -> Vec<FsUsage> {
     let mut seen = Vec::new();
     let mut out = Vec::new();
     for p in paths {
-        let Ok(md) = std::fs::metadata(p) else { continue };
+        let Ok(md) = std::fs::metadata(p) else {
+            continue;
+        };
         if seen.contains(&md.dev()) {
             continue;
         }
-        let Ok(vfs) = rustix::fs::statvfs(p) else { continue };
+        let Ok(vfs) = rustix::fs::statvfs(p) else {
+            continue;
+        };
         seen.push(md.dev());
         out.push(FsUsage {
             label: p.display().to_string(),

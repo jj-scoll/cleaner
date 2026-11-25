@@ -13,12 +13,22 @@ use std::process::Command;
 fn with_ctx<R>(home: &Path, cfg: Config, f: impl FnOnce(&ScanCtx) -> R) -> R {
     let protector = Protector::new(home, &cfg.protect);
     let tools = common::FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config: &cfg, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config: &cfg,
+        protector: &protector,
+        tools: &tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     f(&ctx)
 }
 
 fn scan_with(home: &Path, cfg: Config) -> ScanOutput {
-    with_ctx(home, cfg, |ctx| Artifacts.scan(ctx, &mut InodeSet::default()).unwrap())
+    with_ctx(home, cfg, |ctx| {
+        Artifacts.scan(ctx, &mut InodeSet::default()).unwrap()
+    })
 }
 
 fn scan(home: &Path) -> ScanOutput {
@@ -43,7 +53,15 @@ fn entry_for<'a>(out: &'a ScanOutput, title: &str) -> &'a Entry {
 fn git_commit_now(dir: &Path) {
     for args in [
         &["add", "-A"][..],
-        &["-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "now"][..],
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "now",
+        ][..],
     ] {
         let st = Command::new("git")
             .args(args)
@@ -139,7 +157,9 @@ fn tracked_node_modules_skipped() {
     let out = scan(h);
     assert!(out.entries.is_empty(), "{:?}", out.entries);
     assert!(
-        out.skipped.iter().any(|s| s.title == "~/p/node_modules" && s.reason.contains("tracked in git")),
+        out.skipped
+            .iter()
+            .any(|s| s.title == "~/p/node_modules" && s.reason.contains("tracked in git")),
         "{:?}",
         out.skipped
     );
@@ -195,7 +215,11 @@ fn stale_project_selected_active_not() {
     let out = scan(h);
     let old = entry_for(&out, "old");
     assert!(old.selected);
-    assert!(old.reason.contains("untouched for 40 days"), "{}", old.reason);
+    assert!(
+        old.reason.contains("untouched for 40 days"),
+        "{}",
+        old.reason
+    );
     let new = entry_for(&out, "new");
     assert!(!new.selected);
     assert!(new.reason.contains("active 2 days ago"), "{}", new.reason);
@@ -224,10 +248,18 @@ fn age_uses_mtime_not_atime() {
     let out = scan(h);
     let edited = entry_for(&out, "edited");
     assert!(!edited.selected, "{}", edited.reason);
-    assert!(edited.reason.contains("active 2 days ago"), "{}", edited.reason);
+    assert!(
+        edited.reason.contains("active 2 days ago"),
+        "{}",
+        edited.reason
+    );
     let read = entry_for(&out, "read");
     assert!(read.selected, "{}", read.reason);
-    assert!(read.reason.contains("untouched for 40 days"), "{}", read.reason);
+    assert!(
+        read.reason.contains("untouched for 40 days"),
+        "{}",
+        read.reason
+    );
 }
 
 #[test]
@@ -287,7 +319,11 @@ fn pycache_found_at_depth_but_not_inside_venv() {
     all.sort();
     assert_eq!(
         all,
-        vec![h.join("py/.venv"), h.join("py/__pycache__"), h.join("py/pkg/sub/__pycache__")]
+        vec![
+            h.join("py/.venv"),
+            h.join("py/__pycache__"),
+            h.join("py/pkg/sub/__pycache__")
+        ]
     );
 }
 
@@ -309,7 +345,10 @@ fn tracked_since_plan_not_deleted() {
 
     git_commit_all(&p); // node_modules is now tracked; no working-tree mtime changes
     let res = with_ctx(h, Config::default(), |ctx| Artifacts.apply(e, ctx));
-    assert!(matches!(&res, Outcome::Skipped { reason } if reason == "tracked in git"), "{res:?}");
+    assert!(
+        matches!(&res, Outcome::Skipped { reason } if reason == "tracked in git"),
+        "{res:?}"
+    );
     assert!(a.exists(), "tracked file deleted");
 }
 
@@ -361,7 +400,10 @@ fn merged_rust_worktree(home: &Path) -> PathBuf {
     mkfile(&repo.join("Cargo.toml"), 10);
     git_commit_all(&repo);
     let wt = home.join("wt/w");
-    git_fixed(&repo, &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "w"]);
+    git_fixed(
+        &repo,
+        &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "w"],
+    );
     mkfile(&wt.join("w.txt"), 100);
     git_commit_all(&wt);
     git_fixed(&repo, &["merge", "-q", "--ff-only", "w"]);
@@ -408,7 +450,10 @@ fn trunk_worktree_artifacts_not_preselected() {
     git_commit_all(&repo);
     git_fixed(&repo, &["checkout", "-q", "--detach"]);
     let wt = h.join("wt/w");
-    git_fixed(&repo, &["worktree", "add", "-q", wt.to_str().unwrap(), "main"]);
+    git_fixed(
+        &repo,
+        &["worktree", "add", "-q", wt.to_str().unwrap(), "main"],
+    );
     mkfile(&wt.join("target/debug/app"), 5000);
     age_tree(&h.join("wt"), 1);
 
@@ -448,7 +493,10 @@ fn aged(h: &Path, files: &[&str], days: u64) {
 }
 
 fn names(e: &Entry) -> std::collections::BTreeSet<String> {
-    targets(e).iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
+    targets(e)
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect()
 }
 
 fn set(v: &[&str]) -> std::collections::BTreeSet<String> {
@@ -496,12 +544,19 @@ fn plan4_ecosystems_detected() {
 fn jupyter_checkpoints_never_preselected() {
     let tmp = tempfile::tempdir().unwrap();
     let h = tmp.path();
-    aged(h, &["n/a.ipynb", "n/.ipynb_checkpoints/a-checkpoint.ipynb"], 400);
+    aged(
+        h,
+        &["n/a.ipynb", "n/.ipynb_checkpoints/a-checkpoint.ipynb"],
+        400,
+    );
     let out = scan(h);
     assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
     let e = &out.entries[0];
     assert!(!e.selected);
-    assert_eq!(e.reason, "jupyter artifacts are never pre-selected; untouched for 400 days");
+    assert_eq!(
+        e.reason,
+        "jupyter artifacts are never pre-selected; untouched for 400 days"
+    );
 }
 
 #[test]
@@ -517,7 +572,16 @@ fn jupyter_without_notebook_not_listed() {
 fn jupyter_split_from_ticked() {
     let tmp = tempfile::tempdir().unwrap();
     let h = tmp.path();
-    aged(h, &["p/pyproject.toml", "p/.venv/x", "p/a.ipynb", "p/.ipynb_checkpoints/x"], 40);
+    aged(
+        h,
+        &[
+            "p/pyproject.toml",
+            "p/.venv/x",
+            "p/a.ipynb",
+            "p/.ipynb_checkpoints/x",
+        ],
+        40,
+    );
     let out = scan(h);
     let ps: Vec<&Entry> = out.entries.iter().filter(|e| e.title == "p").collect();
     assert_eq!(ps.len(), 2, "{:?}", out.entries);
@@ -525,7 +589,10 @@ fn jupyter_split_from_ticked() {
     let unticked = ps.iter().find(|e| !e.selected).expect("unselected entry");
     assert_eq!(names(ticked), set(&[".venv"]));
     assert_eq!(names(unticked), set(&[".ipynb_checkpoints"]));
-    assert_eq!(unticked.reason, "jupyter artifacts are never pre-selected; untouched for 40 days");
+    assert_eq!(
+        unticked.reason,
+        "jupyter artifacts are never pre-selected; untouched for 40 days"
+    );
 }
 
 #[test]
@@ -538,6 +605,14 @@ fn tracked_vendor_skipped() {
     mkfile(&p.join("vendor/x"), 10);
     git_commit_all(&p);
     let out = scan(h);
-    assert!(out.entries.iter().all(|e| !names(e).contains("vendor")), "{:?}", out.entries);
-    assert!(out.skipped.iter().any(|s| s.reason == "tracked in git"), "{:?}", out.skipped);
+    assert!(
+        out.entries.iter().all(|e| !names(e).contains("vendor")),
+        "{:?}",
+        out.entries
+    );
+    assert!(
+        out.skipped.iter().any(|s| s.reason == "tracked in git"),
+        "{:?}",
+        out.skipped
+    );
 }

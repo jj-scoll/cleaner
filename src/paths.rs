@@ -41,9 +41,14 @@ impl Paths {
         let state_home = xdg_var("XDG_STATE_HOME").unwrap_or_else(|| home.join(".local/state"));
         let state_dir = state_home.join("cleaner");
         let run = xdg_var("XDG_RUNTIME_DIR");
-        let lock_file = run.as_ref().map_or_else(|| state_dir.join("cleaner.lock"), |r| r.join("cleaner.lock"));
-        let space_state =
-            run.as_ref().map_or_else(|| state_dir.join("cleaner-space.json"), |r| r.join("cleaner-space.json"));
+        let lock_file = run.as_ref().map_or_else(
+            || state_dir.join("cleaner.lock"),
+            |r| r.join("cleaner.lock"),
+        );
+        let space_state = run.as_ref().map_or_else(
+            || state_dir.join("cleaner-space.json"),
+            |r| r.join("cleaner-space.json"),
+        );
         Ok(Paths {
             config_file: config_home.join("cleaner/config.toml"),
             systemd_user_dir: config_home.join("systemd/user"),
@@ -94,7 +99,11 @@ pub fn expand(pattern: &str, home: &Path) -> Vec<PathBuf> {
             Some(r) => home.join(r),
             None => PathBuf::from(pattern),
         };
-        return if p.symlink_metadata().is_ok() { vec![p] } else { Vec::new() };
+        return if p.symlink_metadata().is_ok() {
+            vec![p]
+        } else {
+            Vec::new()
+        };
     }
 
     let full = match rest {
@@ -103,7 +112,11 @@ pub fn expand(pattern: &str, home: &Path) -> Vec<PathBuf> {
                 return Vec::new();
             };
             let h = glob::Pattern::escape(h);
-            if r.is_empty() { h } else { format!("{}/{r}", h.trim_end_matches('/')) }
+            if r.is_empty() {
+                h
+            } else {
+                format!("{}/{r}", h.trim_end_matches('/'))
+            }
         }
         None => pattern.to_string(),
     };
@@ -132,5 +145,8 @@ pub fn expand_roots(roots: &[String], home: &Path) -> Vec<PathBuf> {
     all = all.into_iter().map(|p| p.components().collect()).collect();
     all.sort();
     all.dedup();
-    all.iter().filter(|p| !all.iter().any(|q| q != *p && p.starts_with(q))).cloned().collect()
+    all.iter()
+        .filter(|p| !all.iter().any(|q| q != *p && p.starts_with(q)))
+        .cloned()
+        .collect()
 }

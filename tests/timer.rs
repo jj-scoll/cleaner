@@ -6,7 +6,8 @@ use cleaner::APP_ID;
 use cleaner::config::Config;
 use cleaner::paths::Paths;
 use cleaner::timer::{
-    parse_interval, parse_time, refresh_if_installed, render_service, render_space_service, render_space_timer, render_timer,
+    parse_interval, parse_time, refresh_if_installed, render_service, render_space_service,
+    render_space_timer, render_timer,
 };
 use predicates::str::contains;
 use std::os::unix::fs::PermissionsExt;
@@ -19,7 +20,11 @@ use tempfile::TempDir;
 fn fake_systemctl(dir: &Path, log: &Path) {
     std::fs::create_dir_all(dir).unwrap();
     let script = dir.join("systemctl");
-    std::fs::write(&script, format!("#!/bin/sh\necho \"$@\" >> '{}'\n", log.display())).unwrap();
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\necho \"$@\" >> '{}'\n", log.display()),
+    )
+    .unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
@@ -30,7 +35,11 @@ fn fake_systemctl_in_process() {
     ONCE.call_once(|| {
         let dir = std::env::temp_dir().join(format!("cleaner-timer-test-{}", std::process::id()));
         fake_systemctl(&dir, Path::new("/dev/null"));
-        let path = format!("{}:{}", dir.display(), std::env::var("PATH").unwrap_or_default());
+        let path = format!(
+            "{}:{}",
+            dir.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
         // SAFETY: runs once, before this test reads the environment; the other
         // tests here pass PATH to their children explicitly.
         unsafe { std::env::set_var("PATH", path) };
@@ -63,7 +72,11 @@ impl Env {
     }
 
     fn calls(&self) -> Vec<String> {
-        std::fs::read_to_string(self.calls_file()).unwrap().lines().map(str::to_string).collect()
+        std::fs::read_to_string(self.calls_file())
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
     }
 
     fn write_config(&self, text: &str) {
@@ -84,7 +97,9 @@ impl Env {
     /// Where the freedesktop icon theme spec puts a user's app icon, under the
     /// XDG_DATA_HOME that `cmd` sets.
     fn icon_file(&self) -> PathBuf {
-        self.home().join(format!(".local/share/icons/hicolor/scalable/apps/{APP_ID}.svg"))
+        self.home().join(format!(
+            ".local/share/icons/hicolor/scalable/apps/{APP_ID}.svg"
+        ))
     }
 
     /// `cleaner <args>` with HOME and every XDG dir inside the temp dir and
@@ -158,17 +173,37 @@ fn install_writes_units_and_enables() {
     for f in env.unit_files() {
         assert!(f.is_file(), "{} missing", f.display());
     }
-    let [service, timer, desktop] = env.unit_files().map(|f| std::fs::read_to_string(f).unwrap());
+    let [service, timer, desktop] = env
+        .unit_files()
+        .map(|f| std::fs::read_to_string(f).unwrap());
     assert!(timer.contains("OnCalendar=*-*-* 03:00:00\n"), "{timer}");
-    let exe = Path::new(env!("CARGO_BIN_EXE_cleaner")).canonicalize().unwrap();
-    assert!(service.contains(&format!("ExecStart=\"{}\" plan --notify\n", exe.display())), "{service}");
-    assert!(desktop.contains(&format!("Exec=\"{}\" gui\n", exe.display())), "{desktop}");
+    let exe = Path::new(env!("CARGO_BIN_EXE_cleaner"))
+        .canonicalize()
+        .unwrap();
+    assert!(
+        service.contains(&format!("ExecStart=\"{}\" plan --notify\n", exe.display())),
+        "{service}"
+    );
+    assert!(
+        desktop.contains(&format!("Exec=\"{}\" gui\n", exe.display())),
+        "{desktop}"
+    );
     assert!(desktop.contains(&format!("\nIcon={APP_ID}\n")), "{desktop}");
-    let svg = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icon/cleaner.svg")).unwrap();
-    assert_eq!(std::fs::read(env.icon_file()).ok(), Some(svg), "{} is not the brand icon", env.icon_file().display());
+    let svg = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icon/cleaner.svg"))
+        .unwrap();
+    assert_eq!(
+        std::fs::read(env.icon_file()).ok(),
+        Some(svg),
+        "{} is not the brand icon",
+        env.icon_file().display()
+    );
     assert_eq!(
         env.calls(),
-        ["--user daemon-reload", "--user enable --now cleaner.timer", "--user enable --now cleaner-space.timer"]
+        [
+            "--user daemon-reload",
+            "--user enable --now cleaner.timer",
+            "--user enable --now cleaner-space.timer"
+        ]
     );
 }
 
@@ -176,7 +211,10 @@ fn install_writes_units_and_enables() {
 fn install_bad_time_writes_nothing() {
     let env = Env::new();
     env.write_config("timer_time = \"3am\"\n");
-    env.cmd(&["timer", "install"]).assert().code(1).stderr(contains("HH:MM"));
+    env.cmd(&["timer", "install"])
+        .assert()
+        .code(1)
+        .stderr(contains("HH:MM"));
     for f in env.unit_files().into_iter().chain([env.icon_file()]) {
         assert!(!f.exists(), "{} written", f.display());
     }
@@ -187,7 +225,11 @@ fn install_bad_time_writes_nothing() {
 fn uninstall_removes_units() {
     let env = Env::new();
     env.cmd(&["timer", "install"]).assert().success();
-    assert!(env.icon_file().is_file(), "{} missing", env.icon_file().display());
+    assert!(
+        env.icon_file().is_file(),
+        "{} missing",
+        env.icon_file().display()
+    );
     env.cmd(&["timer", "uninstall"]).assert().success();
     for f in env.unit_files().into_iter().chain([env.icon_file()]) {
         assert!(!f.exists(), "{} still there", f.display());
@@ -216,7 +258,10 @@ fn refresh_only_when_installed() {
 impl Env {
     fn space_files(&self) -> [PathBuf; 2] {
         let d = self.paths().systemd_user_dir;
-        [d.join("cleaner-space.service"), d.join("cleaner-space.timer")]
+        [
+            d.join("cleaner-space.service"),
+            d.join("cleaner-space.timer"),
+        ]
     }
 }
 
@@ -239,7 +284,10 @@ fn parse_interval_cases() {
     }
     for bad in ["0min", "10", "10s", "ten min", ""] {
         let err = parse_interval(bad).expect_err(bad);
-        assert_eq!(err.to_string(), format!("invalid interval {bad:?} (expected e.g. 10min or 1h)"));
+        assert_eq!(
+            err.to_string(),
+            format!("invalid interval {bad:?} (expected e.g. 10min or 1h)")
+        );
     }
 }
 
@@ -250,7 +298,12 @@ fn install_writes_space_units() {
     for f in env.space_files() {
         assert!(f.is_file(), "{} missing", f.display());
     }
-    assert!(env.calls().contains(&"--user enable --now cleaner-space.timer".to_string()), "{:?}", env.calls());
+    assert!(
+        env.calls()
+            .contains(&"--user enable --now cleaner-space.timer".to_string()),
+        "{:?}",
+        env.calls()
+    );
 }
 
 #[test]
@@ -265,14 +318,22 @@ fn install_low_space_off_removes_space_units() {
     for f in env.space_files() {
         assert!(!f.exists(), "{} still there", f.display());
     }
-    assert!(env.calls().contains(&"--user disable --now cleaner-space.timer".to_string()), "{:?}", env.calls());
+    assert!(
+        env.calls()
+            .contains(&"--user disable --now cleaner-space.timer".to_string()),
+        "{:?}",
+        env.calls()
+    );
 }
 
 #[test]
 fn install_bad_interval_writes_nothing() {
     let env = Env::new();
     env.write_config("[low_space]\ninterval = \"soon\"\n");
-    env.cmd(&["timer", "install"]).assert().code(1).stderr(contains("invalid interval"));
+    env.cmd(&["timer", "install"])
+        .assert()
+        .code(1)
+        .stderr(contains("invalid interval"));
     for f in env.unit_files().iter().chain(env.space_files().iter()) {
         assert!(!f.exists(), "{} written", f.display());
     }
@@ -288,8 +349,14 @@ fn uninstall_removes_space_units() {
         assert!(!f.exists(), "{} still there", f.display());
     }
     let calls = env.calls();
-    for want in ["--user disable --now cleaner.timer", "--user disable --now cleaner-space.timer"] {
-        assert!(calls.contains(&want.to_string()), "no {want:?} in {calls:?}");
+    for want in [
+        "--user disable --now cleaner.timer",
+        "--user disable --now cleaner-space.timer",
+    ] {
+        assert!(
+            calls.contains(&want.to_string()),
+            "no {want:?} in {calls:?}"
+        );
     }
 }
 
@@ -337,18 +404,34 @@ fn nix_managed_units_are_left_alone() {
     let env = Env::new();
     let links = link_units_from_nix(&env);
     for args in [["timer", "install"], ["timer", "uninstall"]] {
-        env.cmd(&args).assert().code(1).stderr(contains("managed by Nix"));
+        env.cmd(&args)
+            .assert()
+            .code(1)
+            .stderr(contains("managed by Nix"));
     }
-    env.cmd(&["timer", "status"]).assert().success().stdout(contains("units: managed by Nix\n"));
-    let config = Config { timer_time: "04:30".into(), ..Default::default() };
+    env.cmd(&["timer", "status"])
+        .assert()
+        .success()
+        .stdout(contains("units: managed by Nix\n"));
+    let config = Config {
+        timer_time: "04:30".into(),
+        ..Default::default()
+    };
     assert!(!refresh_if_installed(&env.paths(), &config, Path::new("/x/cleaner")).unwrap());
     for f in &links {
-        assert!(std::fs::read_link(f).unwrap().starts_with("/nix/store"), "{} replaced", f.display());
+        assert!(
+            std::fs::read_link(f).unwrap().starts_with("/nix/store"),
+            "{} replaced",
+            f.display()
+        );
     }
     for f in env.space_files().iter().chain(&env.unit_files()[2..]) {
         assert!(!f.exists(), "{} written", f.display());
     }
-    assert_eq!(env.calls(), ["--user list-timers cleaner.timer cleaner-space.timer --no-pager"]);
+    assert_eq!(
+        env.calls(),
+        ["--user list-timers cleaner.timer cleaner-space.timer --no-pager"]
+    );
 }
 
 /// The Nix package's wrapper sets CLEANER_EXE to itself, so units and the
@@ -359,9 +442,20 @@ fn install_uses_cleaner_exe_when_set() {
     let wrapper = env.tmp.path().join("wrapper/cleaner");
     std::fs::create_dir_all(wrapper.parent().unwrap()).unwrap();
     std::fs::write(&wrapper, "").unwrap();
-    env.cmd(&["timer", "install"]).env("CLEANER_EXE", &wrapper).assert().success();
-    let [service, _, desktop] = env.unit_files().map(|f| std::fs::read_to_string(f).unwrap());
+    env.cmd(&["timer", "install"])
+        .env("CLEANER_EXE", &wrapper)
+        .assert()
+        .success();
+    let [service, _, desktop] = env
+        .unit_files()
+        .map(|f| std::fs::read_to_string(f).unwrap());
     let want = wrapper.canonicalize().unwrap();
-    assert!(service.contains(&format!("ExecStart=\"{}\" plan --notify\n", want.display())), "{service}");
-    assert!(desktop.contains(&format!("Exec=\"{}\" gui\n", want.display())), "{desktop}");
+    assert!(
+        service.contains(&format!("ExecStart=\"{}\" plan --notify\n", want.display())),
+        "{service}"
+    );
+    assert!(
+        desktop.contains(&format!("Exec=\"{}\" gui\n", want.display())),
+        "{desktop}"
+    );
 }

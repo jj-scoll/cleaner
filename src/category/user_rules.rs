@@ -13,8 +13,13 @@ impl Category for UserRules {
     }
 
     fn scan(&self, ctx: &ScanCtx, seen: &mut InodeSet) -> anyhow::Result<ScanOutput> {
-        Ok(scan_stores(self.id(), &ctx.config.user_rules, ctx, seen, &|n, days| {
-            format!("{} older than {}", plural(n, "file"), plural(days, "day"))
-        }, &|_| false))
+        Ok(scan_stores(
+            self.id(),
+            &ctx.config.user_rules,
+            ctx,
+            seen,
+            &|n, days| format!("{} older than {}", plural(n, "file"), plural(days, "day")),
+            &|_| false,
+        ))
     }
 }

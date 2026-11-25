@@ -5,7 +5,9 @@
 //! checked before anything in it is deleted.
 
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
-use rustix::fs::{AtFlags, Dir, FileType, Mode, OFlags, Stat, fchmod, fstat, openat, statat, unlinkat};
+use rustix::fs::{
+    AtFlags, Dir, FileType, Mode, OFlags, Stat, fchmod, fstat, openat, statat, unlinkat,
+};
 use rustix::io::Errno;
 use std::ffi::{CStr, OsStr};
 use std::path::{Path, PathBuf};
@@ -127,7 +129,11 @@ fn unlink_in<N: rustix::path::Arg + Copy>(
 
 #[allow(clippy::unnecessary_cast)]
 fn freed_bytes(st: &Stat) -> u64 {
-    if st.st_nlink as u64 == 1 { st.st_blocks as u64 * 512 } else { 0 }
+    if st.st_nlink as u64 == 1 {
+        st.st_blocks as u64 * 512
+    } else {
+        0
+    }
 }
 
 fn cstr_os(c: &CStr) -> &OsStr {

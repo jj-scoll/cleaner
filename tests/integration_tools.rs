@@ -22,7 +22,15 @@ fn scan_real(cat: &dyn Category) -> ScanOutput {
     let config = Config::default();
     let protector = Protector::new(tmp.path(), &config.protect);
     let now = jiff::Timestamp::now().as_second();
-    let ctx = ScanCtx { home: tmp.path(), now, config: &config, protector: &protector, tools: &SystemRunner, euid: rustix::process::geteuid().as_raw(), usage: None };
+    let ctx = ScanCtx {
+        home: tmp.path(),
+        now,
+        config: &config,
+        protector: &protector,
+        tools: &SystemRunner,
+        euid: rustix::process::geteuid().as_raw(),
+        usage: None,
+    };
     cat.scan(&ctx, &mut InodeSet::default()).unwrap()
 }
 
@@ -32,8 +40,16 @@ fn docker_scan_real() {
         return;
     }
     let out = scan_real(&Docker::default());
-    println!("docker: {} entries, {} skipped {:?}", out.entries.len(), out.skipped.len(), out.skipped);
-    assert!(!out.entries.is_empty() || !out.skipped.is_empty(), "neither entries nor a skip");
+    println!(
+        "docker: {} entries, {} skipped {:?}",
+        out.entries.len(),
+        out.skipped.len(),
+        out.skipped
+    );
+    assert!(
+        !out.entries.is_empty() || !out.skipped.is_empty(),
+        "neither entries nor a skip"
+    );
     for e in &out.entries {
         assert!(e.permanent, "docker entry not permanent: {}", e.title);
     }
@@ -46,7 +62,11 @@ fn nix_scan_real() {
     }
     // Temp home, so user profiles are empty; the config's system_profile is the real one.
     let out = scan_real(&Nix);
-    let system: Vec<_> = out.entries.iter().filter(|e| e.title.starts_with("system:")).collect();
+    let system: Vec<_> = out
+        .entries
+        .iter()
+        .filter(|e| e.title.starts_with("system:"))
+        .collect();
     println!(
         "nix: {} entries, system row present={}, selected={:?}",
         out.entries.len(),
@@ -67,7 +87,13 @@ fn uv_dir_real() {
         println!("uv: not installed, skipped");
         return;
     }
-    let out = SystemRunner.run("uv", &[OsStr::new("cache"), OsStr::new("dir")], QUERY_TIMEOUT).unwrap();
+    let out = SystemRunner
+        .run(
+            "uv",
+            &[OsStr::new("cache"), OsStr::new("dir")],
+            QUERY_TIMEOUT,
+        )
+        .unwrap();
     assert!(out.ok(), "uv cache dir failed: {}", out.stderr);
     let dir = out.stdout.trim();
     println!("uv cache dir: {dir}");

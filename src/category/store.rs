@@ -16,7 +16,9 @@ use crate::protect::Protector;
 /// Which entries under a store root are judged as one unit.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Unit {
-    Files { recursive: bool },
+    Files {
+        recursive: bool,
+    },
     Depth(u8),
     NameContains(String),
     /// Any dir below the root (to depth `DIRS_NAMED_MAX_DEPTH`) whose name
@@ -89,15 +91,28 @@ pub struct Evaluated {
 
 /// Why a store root with foreign-owned units is not offered.
 pub fn foreign_reason(uid: u32) -> String {
-    let who = if uid == 0 { "root".to_string() } else { format!("uid {uid}") };
+    let who = if uid == 0 {
+        "root".to_string()
+    } else {
+        format!("uid {uid}")
+    };
     format!("contains files owned by {who}; cleaner never runs as root")
 }
 
 /// The `Skip` for a rule root with foreign-owned units, if `found` has any;
 /// the root is shown under `~` (`home`).
-pub fn foreign_skip(category: &str, rule: &StoreRule, found: &Evaluated, home: &Path) -> Option<Skip> {
+pub fn foreign_skip(
+    category: &str,
+    rule: &StoreRule,
+    found: &Evaluated,
+    home: &Path,
+) -> Option<Skip> {
     let (_, uid) = found.foreign.first()?;
-    Some(Skip { category: category.into(), title: crate::paths::tilde(&rule.root, home), reason: foreign_reason(*uid) })
+    Some(Skip {
+        category: category.into(),
+        title: crate::paths::tilde(&rule.root, home),
+        reason: foreign_reason(*uid),
+    })
 }
 
 /// The units of `rule` that match at the current euid; see [`evaluate_as`].
@@ -113,7 +128,13 @@ pub fn evaluate(rule: &StoreRule, now: i64, prot: &Protector, seen: &mut InodeSe
 /// ownership test goes to `foreign`. `Match::bytes` is deduplicated against `seen`.
 ///
 /// A store root that is missing, not a directory, or a symlink has no units.
-pub fn evaluate_as(rule: &StoreRule, now: i64, prot: &Protector, seen: &mut InodeSet, euid: u32) -> Evaluated {
+pub fn evaluate_as(
+    rule: &StoreRule,
+    now: i64,
+    prot: &Protector,
+    seen: &mut InodeSet,
+    euid: u32,
+) -> Evaluated {
     let Ok(root_md) = std::fs::symlink_metadata(&rule.root) else {
         return Evaluated::default();
     };
@@ -142,7 +163,9 @@ pub fn evaluate_as(rule: &StoreRule, now: i64, prot: &Protector, seen: &mut Inod
         }
         // Judge age and size on a private set, so a unit that doesn't match
         // leaves `seen` untouched for whatever else in the plan shares inodes.
-        let Ok(m) = measure_as(&unit, &mut InodeSet::default(), euid) else { continue };
+        let Ok(m) = measure_as(&unit, &mut InodeSet::default(), euid) else {
+            continue;
+        };
         if m.errors > 0 || m.newest_mtime >= cutoff {
             continue; // unreadable parts could hide something new: fail safe
         }
@@ -159,8 +182,14 @@ pub fn evaluate_as(rule: &StoreRule, now: i64, prot: &Protector, seen: &mut Inod
         if crate::git::repo_root(&unit).is_some_and(|repo| crate::git::is_tracked(&repo, &unit)) {
             continue;
         }
-        let Ok(counted) = measure(&unit, seen) else { continue };
-        out.matches.push(Match { path: unit, bytes: counted.bytes, newest_mtime: m.newest_mtime });
+        let Ok(counted) = measure(&unit, seen) else {
+            continue;
+        };
+        out.matches.push(Match {
+            path: unit,
+            bytes: counted.bytes,
+            newest_mtime: m.newest_mtime,
+        });
     }
     out
 }
@@ -168,7 +197,14 @@ pub fn evaluate_as(rule: &StoreRule, now: i64, prot: &Protector, seen: &mut Inod
 /// The `n` largest units matching `rule` now (for the GUI's expandable store
 /// row), largest first.
 pub fn top_matches(rule: &StoreRule, ctx: &ScanCtx, n: usize) -> Vec<Match> {
-    let mut matches = evaluate_as(rule, ctx.now, ctx.protector, &mut InodeSet::default(), ctx.euid).matches;
+    let mut matches = evaluate_as(
+        rule,
+        ctx.now,
+        ctx.protector,
+        &mut InodeSet::default(),
+        ctx.euid,
+    )
+    .matches;
     matches.sort_by_key(|m| std::cmp::Reverse(m.bytes));
     matches.truncate(n);
     matches
@@ -180,7 +216,9 @@ fn units(root: &Path, dev: u64, unit: &Unit, prot: &Protector) -> Vec<PathBuf> {
     // (dir, depth of dir below root)
     let mut stack: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
     while let Some((dir, depth)) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in rd.flatten() {
             // DirEntry::metadata is an lstat.
             let Ok(md) = entry.metadata() else { continue };
@@ -220,7 +258,10 @@ fn units(root: &Path, dev: u64, unit: &Unit, prot: &Protector) -> Vec<PathBuf> {
                     }
                     if names.iter().any(|n| entry.file_name() == n.as_str()) {
                         out.push(p);
-                    } else if descend && depth + 1 < DIRS_NAMED_MAX_DEPTH && entry.file_name() != DIRS_NAMED_NEVER {
+                    } else if descend
+                        && depth + 1 < DIRS_NAMED_MAX_DEPTH
+                        && entry.file_name() != DIRS_NAMED_NEVER
+                    {
                         stack.push((p, depth + 1));
                     }
                 }
@@ -234,9 +275,18 @@ fn units(root: &Path, dev: u64, unit: &Unit, prot: &Protector) -> Vec<PathBuf> {
 /// Re-evaluates `rule` at `ctx.now` and deletes every match. `Skipped` if
 /// nothing matches now; `Failed` if matches existed but none could be deleted.
 pub fn apply_rule(rule: &StoreRule, ctx: &ScanCtx) -> Outcome {
-    let matches = evaluate_as(rule, ctx.now, ctx.protector, &mut InodeSet::default(), ctx.euid).matches;
+    let matches = evaluate_as(
+        rule,
+        ctx.now,
+        ctx.protector,
+        &mut InodeSet::default(),
+        ctx.euid,
+    )
+    .matches;
     if matches.is_empty() {
-        return Outcome::Skipped { reason: "nothing matches the rule now".into() };
+        return Outcome::Skipped {
+            reason: "nothing matches the rule now".into(),
+        };
     }
     let mut deleted_any = false;
     let mut bytes = 0;
@@ -253,7 +303,9 @@ pub fn apply_rule(rule: &StoreRule, ctx: &ScanCtx) -> Outcome {
     if deleted_any {
         Outcome::Deleted { bytes, failures }
     } else {
-        Outcome::Failed { error: failures.swap_remove(0) }
+        Outcome::Failed {
+            error: failures.swap_remove(0),
+        }
     }
 }
 
@@ -294,7 +346,8 @@ pub fn scan_stores(
                 min_bytes: cfg.min_bytes,
             };
             let found = evaluate_as(&rule, ctx.now, ctx.protector, seen, ctx.euid);
-            out.skipped.extend(foreign_skip(category, &rule, &found, ctx.home));
+            out.skipped
+                .extend(foreign_skip(category, &rule, &found, ctx.home));
             let matches = found.matches;
             if matches.is_empty() {
                 continue;

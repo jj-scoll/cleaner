@@ -77,12 +77,17 @@ impl Sort {
 
     /// `size`, `name` or `age`: the `--sort` value and the saved one.
     pub fn parse(s: &str) -> Option<Sort> {
-        Sort::ALL.into_iter().find(|x| x.label().eq_ignore_ascii_case(s))
+        Sort::ALL
+            .into_iter()
+            .find(|x| x.label().eq_ignore_ascii_case(s))
     }
 
     /// The saved choice; `Size` when none is saved or it can't be read.
     pub fn load(state_dir: &Path) -> Sort {
-        std::fs::read_to_string(state_dir.join(SORT_FILE)).ok().and_then(|s| Sort::parse(s.trim())).unwrap_or_default()
+        std::fs::read_to_string(state_dir.join(SORT_FILE))
+            .ok()
+            .and_then(|s| Sort::parse(s.trim()))
+            .unwrap_or_default()
     }
 
     pub fn save(self, state_dir: &Path) -> std::io::Result<()> {
@@ -96,9 +101,13 @@ impl Sort {
             let primary = match self {
                 Sort::Size => b.bytes.cmp(&a.bytes),
                 Sort::Name => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
-                Sort::Age => last_touched(a).unwrap_or(i64::MAX).cmp(&last_touched(b).unwrap_or(i64::MAX)),
+                Sort::Age => last_touched(a)
+                    .unwrap_or(i64::MAX)
+                    .cmp(&last_touched(b).unwrap_or(i64::MAX)),
             };
-            primary.then_with(|| a.title.cmp(&b.title)).then_with(|| a.id.cmp(&b.id))
+            primary
+                .then_with(|| a.title.cmp(&b.title))
+                .then_with(|| a.id.cmp(&b.id))
         });
     }
 }
@@ -132,8 +141,17 @@ fn in_filter(category: &str, filter: Option<&str>) -> bool {
 impl ReviewModel {
     /// Starts with the plan's own selection.
     pub fn new(plan: Plan) -> ReviewModel {
-        let selected = plan.entries.iter().filter(|e| e.selected).map(|e| e.id.clone()).collect();
-        ReviewModel { plan, selected, sort: Sort::default() }
+        let selected = plan
+            .entries
+            .iter()
+            .filter(|e| e.selected)
+            .map(|e| e.id.clone())
+            .collect();
+        ReviewModel {
+            plan,
+            selected,
+            sort: Sort::default(),
+        }
     }
 
     pub fn sort(&self) -> Sort {
@@ -162,15 +180,26 @@ impl ReviewModel {
             .filter(|c| in_filter(c, filter))
             .filter_map(|category| {
                 let sorted = |entries: &'a [Entry]| {
-                    let mut v: Vec<&Entry> = entries.iter().filter(|e| e.category == category).collect();
+                    let mut v: Vec<&Entry> =
+                        entries.iter().filter(|e| e.category == category).collect();
                     self.sort.apply(&mut v);
                     v
                 };
-                let rows: Vec<Row> =
-                    sorted(&self.plan.entries).into_iter().map(|e| row(e, self.selected.contains(&e.id))).collect();
-                let skipped: Vec<Skip> =
-                    self.plan.skipped.iter().filter(|s| s.category == category).cloned().collect();
-                let report_only: Vec<Row> = sorted(&self.plan.report_only).into_iter().map(|e| row(e, false)).collect();
+                let rows: Vec<Row> = sorted(&self.plan.entries)
+                    .into_iter()
+                    .map(|e| row(e, self.selected.contains(&e.id)))
+                    .collect();
+                let skipped: Vec<Skip> = self
+                    .plan
+                    .skipped
+                    .iter()
+                    .filter(|s| s.category == category)
+                    .cloned()
+                    .collect();
+                let report_only: Vec<Row> = sorted(&self.plan.report_only)
+                    .into_iter()
+                    .map(|e| row(e, false))
+                    .collect();
                 if rows.is_empty() && skipped.is_empty() && report_only.is_empty() {
                     return None;
                 }
@@ -200,8 +229,13 @@ impl ReviewModel {
 
     /// Selects or deselects every plan entry of `category`.
     pub fn set_category(&mut self, category: &str, on: bool) {
-        let ids: Vec<String> =
-            self.plan.entries.iter().filter(|e| e.category == category).map(|e| e.id.clone()).collect();
+        let ids: Vec<String> = self
+            .plan
+            .entries
+            .iter()
+            .filter(|e| e.category == category)
+            .map(|e| e.id.clone())
+            .collect();
         for id in ids {
             self.set(&id, on);
         }
@@ -225,17 +259,29 @@ impl ReviewModel {
 
     /// "Clean selected ({bytes})"
     pub fn clean_label(&self, filter: Option<&str>) -> String {
-        format!("Clean selected ({})", human_bytes(self.selected_bytes(filter)))
+        format!(
+            "Clean selected ({})",
+            human_bytes(self.selected_bytes(filter))
+        )
     }
 
     /// The confirmation dialog's text for the current selection.
     pub fn confirm(&self, filter: Option<&str>) -> Confirm {
         let n = self.chosen(filter).count();
-        let rule = self.chosen(filter).any(|e| matches!(e.kind, EntryKind::StoreRule { .. }));
-        let op = self.chosen(filter).any(|e| matches!(e.kind, EntryKind::Operation { .. }));
+        let rule = self
+            .chosen(filter)
+            .any(|e| matches!(e.kind, EntryKind::StoreRule { .. }));
+        let op = self
+            .chosen(filter)
+            .any(|e| matches!(e.kind, EntryKind::Operation { .. }));
         let closure = self.chosen(filter).any(Entry::is_closure_estimate);
         let root = self.chosen(filter).any(|e| {
-            matches!(e.kind, EntryKind::Object { obj: Object::NixGenerations { root: true, .. } })
+            matches!(
+                e.kind,
+                EntryKind::Object {
+                    obj: Object::NixGenerations { root: true, .. }
+                }
+            )
         });
         // A closure estimate is never stated as an exact size (D5).
         let mut body = format!(
@@ -255,6 +301,9 @@ impl ReviewModel {
         if root {
             body.push_str(" You'll be asked for your password for the system generations.");
         }
-        Confirm { heading: format!("Delete {}?", plural(n, "item")), body }
+        Confirm {
+            heading: format!("Delete {}?", plural(n, "item")),
+            body,
+        }
     }
 }

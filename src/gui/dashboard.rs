@@ -44,7 +44,11 @@ fn call<A>(inner: &Weak<Inner>, pick: impl Fn(&Inner) -> &Callback<A>, arg: A) {
 }
 
 fn label(text: &str, classes: &[&str]) -> gtk::Label {
-    let l = gtk::Label::builder().label(text).xalign(0.0).wrap(true).build();
+    let l = gtk::Label::builder()
+        .label(text)
+        .xalign(0.0)
+        .wrap(true)
+        .build();
     for c in classes {
         l.add_css_class(c);
     }
@@ -94,7 +98,10 @@ impl DashboardPage {
         progress_box.set_visible(false);
 
         let disks = gtk::Box::builder().spacing(12).homogeneous(true).build();
-        let disk_button = gtk::Button::builder().label("What's using my disk").halign(gtk::Align::Start).build();
+        let disk_button = gtk::Button::builder()
+            .label("What's using my disk")
+            .halign(gtk::Align::Start)
+            .build();
         disk_button.add_css_class("flat");
         let banner = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let categories = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -119,7 +126,10 @@ impl DashboardPage {
         ] {
             content.append(w);
         }
-        let clamp = adw::Clamp::builder().maximum_size(860).child(&content).build();
+        let clamp = adw::Clamp::builder()
+            .maximum_size(860)
+            .child(&content)
+            .build();
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .child(&clamp)
@@ -128,7 +138,11 @@ impl DashboardPage {
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);
         toolbar.set_content(Some(&scrolled));
-        let page = adw::NavigationPage::builder().title("Cleaner").tag("dashboard").child(&toolbar).build();
+        let page = adw::NavigationPage::builder()
+            .title("Cleaner")
+            .tag("dashboard")
+            .child(&toolbar)
+            .build();
         page.insert_action_group("dash", Some(&actions));
 
         let inner = Rc::new(Inner {
@@ -168,8 +182,15 @@ impl DashboardPage {
             let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
             card.add_css_class("card");
             card.add_css_class("disk-card");
-            let pct = label(&format!("{:.0}%", fs.used_fraction * 100.0), &["title-1", fs.level.css_class()]);
-            let bar = gtk::LevelBar::builder().min_value(0.0).max_value(1.0).value(fs.used_fraction).build();
+            let pct = label(
+                &format!("{:.0}%", fs.used_fraction * 100.0),
+                &["title-1", fs.level.css_class()],
+            );
+            let bar = gtk::LevelBar::builder()
+                .min_value(0.0)
+                .max_value(1.0)
+                .value(fs.used_fraction)
+                .build();
             for name in ["low", "high", "full"] {
                 bar.remove_offset_value(Some(name));
             }
@@ -187,7 +208,9 @@ impl DashboardPage {
         card.add_css_class("plan-banner");
         let buttons = gtk::Box::builder().spacing(12).margin_top(12).build();
         match &d.banner {
-            Banner::Ready { title, subtitle, .. } => {
+            Banner::Ready {
+                title, subtitle, ..
+            } => {
                 card.add_css_class("ready");
                 card.append(&label(title, &["title-2"]));
                 card.append(&label(subtitle, &["dim-label"]));
@@ -205,7 +228,11 @@ impl DashboardPage {
                 buttons.append(&clean);
             }
             Banner::NoPlan | Banner::Nothing => {
-                let title = if d.banner == Banner::NoPlan { "No plan yet" } else { "Nothing to clean right now" };
+                let title = if d.banner == Banner::NoPlan {
+                    "No plan yet"
+                } else {
+                    "Nothing to clean right now"
+                };
                 card.append(&label(title, &["title-2"]));
                 let scan = gtk::Button::with_label("Scan now");
                 scan.add_css_class("pill");
@@ -219,7 +246,9 @@ impl DashboardPage {
 
         clear(&i.categories);
         if !d.categories.is_empty() {
-            let group = adw::PreferencesGroup::builder().title("In the plan").build();
+            let group = adw::PreferencesGroup::builder()
+                .title("In the plan")
+                .build();
             for c in &d.categories {
                 let subtitle = if c.selected_count == 0 && c.report_only_count > 0 {
                     "report only".to_string()
@@ -232,7 +261,12 @@ impl DashboardPage {
                     .use_markup(false)
                     .activatable(true)
                     .build();
-                row.add_suffix(&gtk::Label::builder().label(human_bytes(c.selected_bytes)).css_classes(["numeric"]).build());
+                row.add_suffix(
+                    &gtk::Label::builder()
+                        .label(human_bytes(c.selected_bytes))
+                        .css_classes(["numeric"])
+                        .build(),
+                );
                 row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
                 let w = weak.clone();
                 let id = c.id.clone();
@@ -269,7 +303,11 @@ impl DashboardPage {
         let i = &self.inner;
         let busy = p.is_some();
         i.progress_box.set_visible(busy);
-        for w in [i.scan_button.upcast_ref::<gtk::Widget>(), i.banner.upcast_ref(), i.categories.upcast_ref()] {
+        for w in [
+            i.scan_button.upcast_ref::<gtk::Widget>(),
+            i.banner.upcast_ref(),
+            i.categories.upcast_ref(),
+        ] {
             w.set_sensitive(!busy);
         }
         let Some(p) = p else { return };
@@ -281,14 +319,23 @@ impl DashboardPage {
             format!("Scanning {}…", category_label(&p.current))
         };
         i.progress_label.set_label(&text);
-        let fraction = if p.total == 0 { 0.0 } else { p.done as f64 / p.total as f64 };
+        let fraction = if p.total == 0 {
+            0.0
+        } else {
+            p.done as f64 / p.total as f64
+        };
         i.progress_bar.set_fraction(fraction);
     }
 
     /// Enables the menu's `name` item ("history", "settings" or "disk") and runs `f`
     /// when it is chosen.
     pub fn connect_menu(&self, name: &str, f: impl Fn() + 'static) {
-        if let Some(a) = self.inner.actions.lookup_action(name).and_downcast::<gio::SimpleAction>() {
+        if let Some(a) = self
+            .inner
+            .actions
+            .lookup_action(name)
+            .and_downcast::<gio::SimpleAction>()
+        {
             a.set_enabled(true);
             a.connect_activate(move |_, _| f());
         }

@@ -25,7 +25,11 @@ pub enum Banner {
     /// The latest plan selects nothing, or it has been applied.
     Nothing,
     /// The latest plan has selected bytes and hasn't been applied.
-    Ready { plan_id: String, title: String, subtitle: String },
+    Ready {
+        plan_id: String,
+        title: String,
+        subtitle: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,12 +51,21 @@ pub struct Dashboard {
     pub last_run: Option<String>,
 }
 
-pub fn dashboard(fs: &[FsUsage], latest: Option<&Plan>, log: &[LogLine], tz: &TimeZone) -> Dashboard {
+pub fn dashboard(
+    fs: &[FsUsage],
+    latest: Option<&Plan>,
+    log: &[LogLine],
+    tz: &TimeZone,
+) -> Dashboard {
     let filesystems = fs
         .iter()
         .map(|f| {
             let used = f.total.saturating_sub(f.avail);
-            let used_fraction = if f.total == 0 { 0.0 } else { used as f64 / f.total as f64 };
+            let used_fraction = if f.total == 0 {
+                0.0
+            } else {
+                used as f64 / f.total as f64
+            };
             FsBar {
                 label: f.label.clone(),
                 used_fraction,
@@ -64,11 +77,19 @@ pub fn dashboard(fs: &[FsUsage], latest: Option<&Plan>, log: &[LogLine], tz: &Ti
 
     let banner = match latest {
         None => Banner::NoPlan,
-        Some(p) if p.selected_bytes() > 0 && !log.iter().any(|l| l.plan_id == p.id) => Banner::Ready {
-            plan_id: p.id.clone(),
-            title: format!("New plan ready: {} can be freed", human_bytes(p.selected_bytes())),
-            subtitle: format!("Built {} · nothing has been touched yet", local_time(p.created, tz)),
-        },
+        Some(p) if p.selected_bytes() > 0 && !log.iter().any(|l| l.plan_id == p.id) => {
+            Banner::Ready {
+                plan_id: p.id.clone(),
+                title: format!(
+                    "New plan ready: {} can be freed",
+                    human_bytes(p.selected_bytes())
+                ),
+                subtitle: format!(
+                    "Built {} · nothing has been touched yet",
+                    local_time(p.created, tz)
+                ),
+            }
+        }
         Some(_) => Banner::Nothing,
     };
 
@@ -94,9 +115,18 @@ pub fn dashboard(fs: &[FsUsage], latest: Option<&Plan>, log: &[LogLine], tz: &Ti
             .collect(),
     };
 
-    let last_run = super::history::history(log, tz)
-        .first()
-        .map(|r| format!("Last run {} · deleted {}", r.when, human_bytes(r.deleted_bytes)));
+    let last_run = super::history::history(log, tz).first().map(|r| {
+        format!(
+            "Last run {} · deleted {}",
+            r.when,
+            human_bytes(r.deleted_bytes)
+        )
+    });
 
-    Dashboard { filesystems, banner, categories, last_run }
+    Dashboard {
+        filesystems,
+        banner,
+        categories,
+        last_run,
+    }
 }

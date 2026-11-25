@@ -20,7 +20,12 @@ fn index(roots: &[&Path], created: i64) -> UsageIndex {
     build(&roots, &[], 16384, created)
 }
 
-fn scan_with(home: &Path, cfg: &Config, protect: &[String], idx: Option<&UsageIndex>) -> ScanOutput {
+fn scan_with(
+    home: &Path,
+    cfg: &Config,
+    protect: &[String],
+    idx: Option<&UsageIndex>,
+) -> ScanOutput {
     let protector = Protector::new(home, protect);
     let tools = common::FakeRunner::new();
     let ctx = ScanCtx {
@@ -55,7 +60,10 @@ fn never_selected(out: &ScanOutput) {
     for e in &out.report_only {
         assert!(!e.selected, "{e:?}");
         assert_eq!(e.category, "idle_folders");
-        assert!(matches!(e.kind, EntryKind::Item { ref targets } if targets.len() == 1), "{e:?}");
+        assert!(
+            matches!(e.kind, EntryKind::Item { ref targets } if targets.len() == 1),
+            "{e:?}"
+        );
     }
 }
 
@@ -189,7 +197,10 @@ fn git_badge_clean_pushed() {
     let rem = TempDir::new().unwrap();
     let p = repo(tmp.path(), Some(&rem.path().join("r.git")));
     age_all(&p, 100);
-    assert_eq!(badge_note(&scan(tmp.path())), "git: clean, all branches pushed");
+    assert_eq!(
+        badge_note(&scan(tmp.path())),
+        "git: clean, all branches pushed"
+    );
 }
 
 #[test]
@@ -283,7 +294,10 @@ fn stale_index_noted() {
     let idx = index(&[h], created);
     let out = scan_with(h, &small_cfg(), &[], Some(&idx));
     never_selected(&out);
-    let want = format!("disk index from {}", local_time(created, &jiff::tz::TimeZone::system()));
+    let want = format!(
+        "disk index from {}",
+        local_time(created, &jiff::tz::TimeZone::system())
+    );
     assert_eq!(out.report_only[0].note.as_deref(), Some(want.as_str()));
 
     // A fresh index adds no note.
@@ -321,5 +335,9 @@ fn git_badge_does_not_write_the_repo() {
     let out = scan(tmp.path());
     assert_eq!(titles(&out), ["~/proj"]);
     let md = index.metadata().unwrap();
-    assert_eq!((md.mtime(), md.mtime_nsec()), (before_s, before), "git status rewrote .git/index");
+    assert_eq!(
+        (md.mtime(), md.mtime_nsec()),
+        (before_s, before),
+        "git status rewrote .git/index"
+    );
 }

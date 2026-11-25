@@ -51,8 +51,13 @@ pub struct UsageIndex {
 
 /// `expand_roots(disk_map.roots ∪ scan_roots)`.
 pub fn index_roots(config: &Config, home: &Path) -> Vec<PathBuf> {
-    let all: Vec<String> =
-        config.disk_map.roots.iter().chain(&config.scan_roots).cloned().collect();
+    let all: Vec<String> = config
+        .disk_map
+        .roots
+        .iter()
+        .chain(&config.scan_roots)
+        .cloned()
+        .collect();
     crate::paths::expand_roots(&all, home)
 }
 
@@ -67,23 +72,45 @@ pub fn build(roots: &[PathBuf], exclude: &[PathBuf], min_node: u64, now: i64) ->
         if exclude.iter().any(|x| root.starts_with(x)) {
             continue;
         }
-        let Ok(md) = std::fs::symlink_metadata(root) else { continue };
+        let Ok(md) = std::fs::symlink_metadata(root) else {
+            continue;
+        };
         if !md.is_dir() {
             continue; // a symlink, or a plain file: not a root
         }
-        let mut w = Walk { dev: md.dev(), exclude, min_node, seen: InodeSet::default() };
-        let name = root.file_name().map(PathBuf::from).unwrap_or_else(|| root.clone());
+        let mut w = Walk {
+            dev: md.dev(),
+            exclude,
+            min_node,
+            seen: InodeSet::default(),
+        };
+        let name = root
+            .file_name()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root.clone());
         let node = w.dir(root, name, &md);
         let (fs_total, fs_used) = match rustix::fs::statvfs(root) {
             Ok(v) => (
                 v.f_blocks.saturating_mul(v.f_frsize),
-                v.f_blocks.saturating_sub(v.f_bfree).saturating_mul(v.f_frsize),
+                v.f_blocks
+                    .saturating_sub(v.f_bfree)
+                    .saturating_mul(v.f_frsize),
             ),
             Err(_) => (0, 0),
         };
-        trees.push(Tree { root: root.clone(), dev: md.dev(), fs_total, fs_used, node });
+        trees.push(Tree {
+            root: root.clone(),
+            dev: md.dev(),
+            fs_total,
+            fs_used,
+            node,
+        });
     }
-    UsageIndex { created: now, min_node, trees }
+    UsageIndex {
+        created: now,
+        min_node,
+        trees,
+    }
 }
 
 struct Walk<'a> {
@@ -95,7 +122,12 @@ struct Walk<'a> {
 
 impl Walk<'_> {
     fn dir(&mut self, path: &Path, name: PathBuf, md: &std::fs::Metadata) -> Node {
-        let mut node = Node { name, dir: true, newest_mtime: md.mtime(), ..Node::default() };
+        let mut node = Node {
+            name,
+            dir: true,
+            newest_mtime: md.mtime(),
+            ..Node::default()
+        };
         let Ok(rd) = std::fs::read_dir(path) else {
             node.unreadable_owner = Some(md.uid());
             return node;
@@ -117,7 +149,12 @@ impl Walk<'_> {
                 // Only inodes with other links can repeat; the set stays small.
                 let first = cmd.nlink() == 1 || self.seen.insert(cmd.dev(), cmd.ino());
                 let bytes = if first { cmd.blocks() * 512 } else { 0 };
-                Node { name, bytes, newest_mtime: cmd.mtime(), ..Node::default() }
+                Node {
+                    name,
+                    bytes,
+                    newest_mtime: cmd.mtime(),
+                    ..Node::default()
+                }
             };
             node.bytes += child.bytes;
             node.newest_mtime = node.newest_mtime.max(child.newest_mtime);
@@ -128,7 +165,8 @@ impl Walk<'_> {
                 node.other_count += 1;
             }
         }
-        node.children.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.name.cmp(&b.name)));
+        node.children
+            .sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.name.cmp(&b.name)));
         node
     }
 }
@@ -146,8 +184,8 @@ impl UsageIndex {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
         };
-        let idx = serde_json::from_str(&text)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let idx =
+            serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
         Ok(Some(idx))
     }
 
@@ -157,7 +195,10 @@ impl UsageIndex {
             let rel = path.strip_prefix(&t.root).ok()?;
             let mut n = &t.node;
             for c in rel.components() {
-                n = n.children.iter().find(|k| k.name.as_os_str() == c.as_os_str())?;
+                n = n
+                    .children
+                    .iter()
+                    .find(|k| k.name.as_os_str() == c.as_os_str())?;
             }
             Some((t, n))
         })

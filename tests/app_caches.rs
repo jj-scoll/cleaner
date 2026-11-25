@@ -55,7 +55,11 @@ impl Fixture {
         let procs = tmp.path().join("proc");
         std::fs::create_dir_all(&home).unwrap();
         std::fs::create_dir_all(&procs).unwrap();
-        Fixture { _tmp: tmp, home, procs }
+        Fixture {
+            _tmp: tmp,
+            home,
+            procs,
+        }
     }
 
     fn chrome_profile(&self) -> PathBuf {
@@ -72,13 +76,27 @@ impl Fixture {
     fn with_ctx<R>(&self, config: &Config, f: impl FnOnce(&ScanCtx, &AppCaches) -> R) -> R {
         let protector = Protector::new(&self.home, &config.protect);
         let tools = common::FakeRunner::new();
-        let ctx =
-            ScanCtx { home: &self.home, now: now(), config, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
-        f(&ctx, &AppCaches { proc_root: self.procs.clone() })
+        let ctx = ScanCtx {
+            home: &self.home,
+            now: now(),
+            config,
+            protector: &protector,
+            tools: &tools,
+            euid: common::my_uid(),
+            usage: None,
+        };
+        f(
+            &ctx,
+            &AppCaches {
+                proc_root: self.procs.clone(),
+            },
+        )
     }
 
     fn scan(&self) -> ScanOutput {
-        self.with_ctx(&Config::default(), |ctx, cat| cat.scan(ctx, &mut InodeSet::default()).unwrap())
+        self.with_ctx(&Config::default(), |ctx, cat| {
+            cat.scan(ctx, &mut InodeSet::default()).unwrap()
+        })
     }
 
     fn apply(&self, entry: &Entry) -> Outcome {
@@ -95,8 +113,10 @@ fn rule_of(e: &Entry) -> &StoreRule {
 
 fn match_paths(rule: &StoreRule, home: &Path) -> Vec<PathBuf> {
     let prot = Protector::new(home, &[]);
-    let mut v: Vec<_> =
-        evaluate(rule, now(), &prot, &mut InodeSet::default()).into_iter().map(|m| m.path).collect();
+    let mut v: Vec<_> = evaluate(rule, now(), &prot, &mut InodeSet::default())
+        .into_iter()
+        .map(|m| m.path)
+        .collect();
     v.sort();
     v
 }
@@ -140,7 +160,10 @@ fn dirs_named_stops_at_depth_six() {
         glob: None,
         min_bytes: None,
     };
-    assert_eq!(match_paths(&rule, &f.home), vec![root.join("1/2/3/4/5/Cache"), root.join("Cache")]);
+    assert_eq!(
+        match_paths(&rule, &f.home),
+        vec![root.join("1/2/3/4/5/Cache"), root.join("Cache")]
+    );
 }
 
 #[test]
@@ -166,21 +189,32 @@ fn live_lock_is_running() {
     std::fs::create_dir_all(&cfg).unwrap();
     symlink("my-host-name-4242", cfg.join("SingletonLock")).unwrap();
     std::fs::create_dir_all(f.procs.join("4242")).unwrap();
-    assert_eq!(lock_owner_alive(&cfg.join("SingletonLock"), &f.procs), Some(true));
+    assert_eq!(
+        lock_owner_alive(&cfg.join("SingletonLock"), &f.procs),
+        Some(true)
+    );
     assert!(app_running(&app("Chrome"), &f.home, &f.procs));
 }
 
 #[test]
 fn firefox_wrapper_detected() {
     let f = Fixture::new();
-    fake_pid(&f.procs, 77, "/nix/store/x-firefox/lib/firefox/firefox", &["/nix/store/y/.firefox-wrapped"]);
+    fake_pid(
+        &f.procs,
+        77,
+        "/nix/store/x-firefox/lib/firefox/firefox",
+        &["/nix/store/y/.firefox-wrapped"],
+    );
     assert!(exe_running(&["firefox".into()], &f.procs));
     assert!(app_running(&app("Firefox"), &f.home, &f.procs));
 
     let profile = f.home.join(".mozilla/firefox/abc.default");
     std::fs::create_dir_all(&profile).unwrap();
     symlink("127.0.0.2:+77", profile.join("lock")).unwrap();
-    assert_eq!(lock_owner_alive(&profile.join("lock"), &f.procs), Some(true));
+    assert_eq!(
+        lock_owner_alive(&profile.join("lock"), &f.procs),
+        Some(true)
+    );
 }
 
 #[test]
@@ -206,7 +240,12 @@ fn argv0_detected() {
 #[test]
 fn claude_code_is_not_claude_desktop() {
     let f = Fixture::new();
-    fake_pid(&f.procs, 99, "/home/u/.local/share/claude/versions/2/claude.exe", &["claude", "--resume"]);
+    fake_pid(
+        &f.procs,
+        99,
+        "/home/u/.local/share/claude/versions/2/claude.exe",
+        &["claude", "--resume"],
+    );
     assert!(!app_running(&app("Claude"), &f.home, &f.procs));
 }
 
@@ -214,7 +253,12 @@ fn claude_code_is_not_claude_desktop() {
 fn running_note_at_plan() {
     let f = Fixture::new();
     f.chrome_profile();
-    fake_pid(&f.procs, 10, "/opt/google/chrome/chrome", &["/opt/google/chrome/chrome"]);
+    fake_pid(
+        &f.procs,
+        10,
+        "/opt/google/chrome/chrome",
+        &["/opt/google/chrome/chrome"],
+    );
     let out = f.scan();
     assert_eq!(out.entries.len(), 1);
     assert_eq!(
@@ -230,8 +274,18 @@ fn apply_skips_when_app_started() {
     let d = f.chrome_profile();
     let out = f.scan();
     assert_eq!(out.entries[0].note, None);
-    fake_pid(&f.procs, 10, "/opt/google/chrome/chrome", &["/opt/google/chrome/chrome"]);
-    assert_eq!(f.apply(&out.entries[0]), Outcome::Skipped { reason: "Chrome is running".into() });
+    fake_pid(
+        &f.procs,
+        10,
+        "/opt/google/chrome/chrome",
+        &["/opt/google/chrome/chrome"],
+    );
+    assert_eq!(
+        f.apply(&out.entries[0]),
+        Outcome::Skipped {
+            reason: "Chrome is running".into()
+        }
+    );
     assert!(d.join("Cache/Cache_Data/a").exists());
     assert!(d.join("GPUCache/c").exists());
 }
@@ -240,7 +294,12 @@ fn apply_skips_when_app_started() {
 fn apply_deletes_when_closed() {
     let f = Fixture::new();
     let d = f.chrome_profile();
-    fake_pid(&f.procs, 10, "/opt/google/chrome/chrome", &["/opt/google/chrome/chrome"]);
+    fake_pid(
+        &f.procs,
+        10,
+        "/opt/google/chrome/chrome",
+        &["/opt/google/chrome/chrome"],
+    );
     let out = f.scan();
     std::fs::remove_dir_all(f.procs.join("10")).unwrap();
     match f.apply(&out.entries[0]) {
@@ -250,7 +309,12 @@ fn apply_deletes_when_closed() {
         }
         o => panic!("expected Deleted, got {o:?}"),
     }
-    for n in ["Cache", "Code Cache", "GPUCache", "Service Worker/CacheStorage"] {
+    for n in [
+        "Cache",
+        "Code Cache",
+        "GPUCache",
+        "Service Worker/CacheStorage",
+    ] {
         assert!(!d.join(n).exists(), "{n} still exists");
     }
     assert!(d.join("History").exists());
@@ -266,7 +330,11 @@ fn apply_skips_rule_no_app_owns() {
     config.app_caches.apps.retain(|a| a.name != "Chrome");
     let o = f.with_ctx(&config, |ctx, cat| cat.apply(&out.entries[0], ctx));
     assert!(matches!(o, Outcome::Skipped { .. }), "{o:?}");
-    assert!(f.home.join(".config/google-chrome/Default/GPUCache").exists());
+    assert!(
+        f.home
+            .join(".config/google-chrome/Default/GPUCache")
+            .exists()
+    );
 }
 
 #[test]
@@ -280,9 +348,18 @@ fn symlinked_cache_dir_skipped() {
     age_tree(&f.home);
     let out = f.scan();
     assert_eq!(out.entries.len(), 1);
-    assert_eq!(match_paths(rule_of(&out.entries[0]), &f.home), vec![d.join("GPUCache")]);
+    assert_eq!(
+        match_paths(rule_of(&out.entries[0]), &f.home),
+        vec![d.join("GPUCache")]
+    );
     let bytes = out.entries[0].bytes;
-    assert_eq!(f.apply(&out.entries[0]), Outcome::Deleted { bytes, failures: vec![] });
+    assert_eq!(
+        f.apply(&out.entries[0]),
+        Outcome::Deleted {
+            bytes,
+            failures: vec![]
+        }
+    );
     assert!(elsewhere.join("keep").exists());
 }
 
@@ -291,7 +368,10 @@ fn dirs_named_skips_extension_packages() {
     let f = Fixture::new();
     let root = f.home.join(".config/google-chrome");
     // An extension shipping a dir named Cache: Chrome would flag it corrupted.
-    mkfile(&root.join("Default/Extensions/abcdef/1.0_0/Cache/data.js"), 10);
+    mkfile(
+        &root.join("Default/Extensions/abcdef/1.0_0/Cache/data.js"),
+        10,
+    );
     mkfile(&root.join("Default/Cache/f"), 10);
     age_tree(&root);
     let rule = StoreRule {
@@ -301,7 +381,10 @@ fn dirs_named_skips_extension_packages() {
         glob: None,
         min_bytes: None,
     };
-    assert_eq!(match_paths(&rule, &f.home), vec![root.join("Default/Cache")]);
+    assert_eq!(
+        match_paths(&rule, &f.home),
+        vec![root.join("Default/Cache")]
+    );
 }
 
 const MODEL_REASON: &str = "re-downloads while Chromium's on-device AI features are on";
@@ -321,14 +404,29 @@ fn chromium_model_is_its_own_row() {
     let model = chromium_with_model(&f);
     let out = f.scan();
     assert_eq!(out.entries.len(), 2, "{:?}", out.entries);
-    let main = out.entries.iter().find(|e| e.title == "Chromium: ~/.config/chromium").unwrap();
+    let main = out
+        .entries
+        .iter()
+        .find(|e| e.title == "Chromium: ~/.config/chromium")
+        .unwrap();
     assert_eq!(main.reason, "1 cache dir");
-    let Unit::DirsNamed(names) = &rule_of(main).unit else { panic!("not DirsNamed") };
-    assert!(!names.iter().any(|n| n == "OptGuideOnDeviceModel"), "{names:?}");
-    let m = out.entries.iter().find(|e| e.title == "Chromium on-device AI model").unwrap();
+    let Unit::DirsNamed(names) = &rule_of(main).unit else {
+        panic!("not DirsNamed")
+    };
+    assert!(
+        !names.iter().any(|n| n == "OptGuideOnDeviceModel"),
+        "{names:?}"
+    );
+    let m = out
+        .entries
+        .iter()
+        .find(|e| e.title == "Chromium on-device AI model")
+        .unwrap();
     assert_eq!(m.reason, MODEL_REASON);
     assert!(m.selected);
-    let want = cleaner::fsutil::measure::measure(&model, &mut InodeSet::default()).unwrap().bytes;
+    let want = cleaner::fsutil::measure::measure(&model, &mut InodeSet::default())
+        .unwrap()
+        .bytes;
     assert_eq!(m.bytes, want);
     assert_eq!(match_paths(rule_of(m), &f.home), vec![model]);
 }
@@ -338,9 +436,23 @@ fn model_row_skipped_while_running() {
     let f = Fixture::new();
     let model = chromium_with_model(&f);
     let out = f.scan();
-    let m = out.entries.iter().find(|e| e.title == "Chromium on-device AI model").unwrap();
-    fake_pid(&f.procs, 10, "/usr/lib/chromium/chromium", &["/usr/lib/chromium/chromium"]);
-    assert_eq!(f.apply(m), Outcome::Skipped { reason: "Chromium is running".into() });
+    let m = out
+        .entries
+        .iter()
+        .find(|e| e.title == "Chromium on-device AI model")
+        .unwrap();
+    fake_pid(
+        &f.procs,
+        10,
+        "/usr/lib/chromium/chromium",
+        &["/usr/lib/chromium/chromium"],
+    );
+    assert_eq!(
+        f.apply(m),
+        Outcome::Skipped {
+            reason: "Chromium is running".into()
+        }
+    );
     assert!(model.join("2025.1/weights.bin").exists());
 }
 
@@ -349,12 +461,20 @@ fn model_only_when_configured() {
     let f = Fixture::new();
     let model = chromium_with_model(&f);
     let mut config = Config::default();
-    config.app_caches.cache_dirs.retain(|n| n != "OptGuideOnDeviceModel");
-    let out = f.with_ctx(&config, |ctx, cat| cat.scan(ctx, &mut InodeSet::default()).unwrap());
+    config
+        .app_caches
+        .cache_dirs
+        .retain(|n| n != "OptGuideOnDeviceModel");
+    let out = f.with_ctx(&config, |ctx, cat| {
+        cat.scan(ctx, &mut InodeSet::default()).unwrap()
+    });
     assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
     assert_eq!(out.entries[0].title, "Chromium: ~/.config/chromium");
     f.with_ctx(&config, |ctx, cat| {
-        assert!(matches!(cat.apply(&out.entries[0], ctx), Outcome::Deleted { .. }));
+        assert!(matches!(
+            cat.apply(&out.entries[0], ctx),
+            Outcome::Deleted { .. }
+        ));
     });
     assert!(model.join("2025.1/weights.bin").exists());
 }
@@ -375,7 +495,11 @@ fn foreign_app_root_yields_one_skip() {
         euid: common::my_uid() + 1,
         usage: None,
     };
-    let out = AppCaches { proc_root: f.procs.clone() }.scan(&ctx, &mut InodeSet::default()).unwrap();
+    let out = AppCaches {
+        proc_root: f.procs.clone(),
+    }
+    .scan(&ctx, &mut InodeSet::default())
+    .unwrap();
     assert!(out.entries.is_empty(), "{:?}", out.entries);
     assert_eq!(out.skipped.len(), 1, "{:?}", out.skipped);
 }

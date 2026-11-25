@@ -16,7 +16,15 @@ use std::path::{Path, PathBuf};
 fn with_ctx<R>(home: &Path, config: &Config, f: impl FnOnce(&ScanCtx) -> R) -> R {
     let protector = Protector::new(home, &config.protect);
     let tools = common::FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config,
+        protector: &protector,
+        tools: &tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     f(&ctx)
 }
 
@@ -26,7 +34,9 @@ fn scan(cat: &dyn Category, home: &Path, config: &Config) -> ScanOutput {
 
 /// Paths the store-rule entry matches right now.
 fn rule_matches(e: &Entry, home: &Path) -> Vec<PathBuf> {
-    let EntryKind::StoreRule { rule } = &e.kind else { panic!("not a store rule") };
+    let EntryKind::StoreRule { rule } = &e.kind else {
+        panic!("not a store rule")
+    };
     let prot = Protector::new(home, &[]);
     let mut v: Vec<PathBuf> = evaluate(rule, now(), &prot, &mut InodeSet::default())
         .into_iter()
@@ -37,14 +47,18 @@ fn rule_matches(e: &Entry, home: &Path) -> Vec<PathBuf> {
 }
 
 fn targets(e: &Entry) -> Vec<PathBuf> {
-    let EntryKind::Item { targets } = &e.kind else { panic!("not an item") };
+    let EntryKind::Item { targets } = &e.kind else {
+        panic!("not an item")
+    };
     targets.iter().map(|t| t.path.clone()).collect()
 }
 
 /// `DeletionDate` value for `days` ago, in local time as the XDG spec says.
 fn deletion_date(days: i64) -> String {
     let t = jiff::Timestamp::from_second(now() - days * 86_400).unwrap();
-    t.to_zoned(jiff::tz::TimeZone::system()).strftime("%Y-%m-%dT%H:%M:%S").to_string()
+    t.to_zoned(jiff::tz::TimeZone::system())
+        .strftime("%Y-%m-%dT%H:%M:%S")
+        .to_string()
 }
 
 fn trash_dirs(home: &Path) -> (PathBuf, PathBuf) {
@@ -61,7 +75,10 @@ fn write_info(home: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 fn info_body(days: i64) -> String {
-    format!("[Trash Info]\nPath=/somewhere/x\nDeletionDate={}\n", deletion_date(days))
+    format!(
+        "[Trash Info]\nPath=/somewhere/x\nDeletionDate={}\n",
+        deletion_date(days)
+    )
 }
 
 #[test]
@@ -102,7 +119,10 @@ fn user_rule_handles_odd_names() {
     assert_eq!(rule_matches(&out.entries[0], home), want);
 
     let res = with_ctx(home, &config, |ctx| UserRules.apply(&out.entries[0], ctx));
-    assert!(matches!(&res, Outcome::Deleted { failures, .. } if failures.is_empty()), "{res:?}");
+    assert!(
+        matches!(&res, Outcome::Deleted { failures, .. } if failures.is_empty()),
+        "{res:?}"
+    );
     assert!(!spaced.exists());
     assert!(bad.symlink_metadata().is_err());
 }
@@ -114,7 +134,11 @@ fn user_rule_glob_and_min_bytes() {
     let dl = home.join("Downloads");
     // Sizes are on-disk (st_blocks * 512), so a tiny file still occupies a
     // whole block; keep the threshold well above one block.
-    for (name, bytes) in [("big.zip", 200_000), ("small.zip", 10), ("big.pdf", 200_000)] {
+    for (name, bytes) in [
+        ("big.zip", 200_000),
+        ("small.zip", 10),
+        ("big.pdf", 200_000),
+    ] {
         mkfile(&dl.join(name), bytes);
         set_age(&dl.join(name), 100);
     }
@@ -130,7 +154,10 @@ fn user_rule_glob_and_min_bytes() {
     };
     let out = scan(&UserRules, home, &config);
     assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
-    assert_eq!(rule_matches(&out.entries[0], home), vec![dl.join("big.zip")]);
+    assert_eq!(
+        rule_matches(&out.entries[0], home),
+        vec![dl.join("big.zip")]
+    );
 }
 
 #[test]
@@ -155,7 +182,10 @@ fn trash_expired_item_both_targets() {
     assert_eq!(targets(e), vec![payload.clone(), info.clone()]);
 
     let res = with_ctx(home, &config, |ctx| Trash.apply(e, ctx));
-    assert!(matches!(&res, Outcome::Deleted { failures, .. } if failures.is_empty()), "{res:?}");
+    assert!(
+        matches!(&res, Outcome::Deleted { failures, .. } if failures.is_empty()),
+        "{res:?}"
+    );
     assert!(!payload.exists());
     assert!(!info.exists());
 }
@@ -197,7 +227,10 @@ fn trash_malformed_skipped() {
     assert_eq!(out.skipped.len(), 1, "{:?}", out.skipped);
     assert_eq!(out.skipped[0].category, "trash");
     assert_eq!(out.skipped[0].reason, "unreadable trashinfo");
-    assert_eq!(out.skipped[0].title, "~/.local/share/Trash/info/odd.txt.trashinfo");
+    assert_eq!(
+        out.skipped[0].title,
+        "~/.local/share/Trash/info/odd.txt.trashinfo"
+    );
 }
 
 #[test]
@@ -218,7 +251,13 @@ fn trash_dot_named_record_not_whole_files_dir() {
     let planned: Vec<PathBuf> = out.entries.iter().flat_map(targets).collect();
     assert!(planned.is_empty(), "{planned:?}");
     assert_eq!(out.skipped.len(), 3, "{:?}", out.skipped);
-    assert!(out.skipped.iter().all(|s| s.reason == "invalid trashinfo name"), "{:?}", out.skipped);
+    assert!(
+        out.skipped
+            .iter()
+            .all(|s| s.reason == "invalid trashinfo name"),
+        "{:?}",
+        out.skipped
+    );
     assert!(recent.exists());
 }
 
@@ -250,7 +289,10 @@ fn user_rule_skips_git_tracked() {
     assert_eq!(rule_matches(&out.entries[0], home), vec![untracked.clone()]);
 
     let res = with_ctx(home, &config, |ctx| UserRules.apply(&out.entries[0], ctx));
-    assert!(matches!(&res, Outcome::Deleted { failures, .. } if failures.is_empty()), "{res:?}");
+    assert!(
+        matches!(&res, Outcome::Deleted { failures, .. } if failures.is_empty()),
+        "{res:?}"
+    );
     assert!(tracked.exists(), "tracked file deleted");
     assert!(!untracked.exists());
 }

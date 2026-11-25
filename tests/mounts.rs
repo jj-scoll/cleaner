@@ -29,7 +29,9 @@ fn in_mount_ns(test: &str, body: impl FnOnce(&Path)) {
         body(Path::new(&dir));
         return;
     }
-    let probe = Command::new("unshare").args(["--user", "--map-root-user", "--mount", "true"]).status();
+    let probe = Command::new("unshare")
+        .args(["--user", "--map-root-user", "--mount", "true"])
+        .status();
     if !probe.is_ok_and(|s| s.success()) {
         eprintln!("skipping {test}: user+mount namespaces unavailable");
         return;
@@ -44,8 +46,14 @@ fn in_mount_ns(test: &str, body: impl FnOnce(&Path)) {
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(out.status.success(), "{test} failed in namespace:\n{stdout}\n{stderr}");
-    assert!(stdout.contains("1 passed"), "{test} did not run in namespace:\n{stdout}\n{stderr}");
+    assert!(
+        out.status.success(),
+        "{test} failed in namespace:\n{stdout}\n{stderr}"
+    );
+    assert!(
+        stdout.contains("1 passed"),
+        "{test} did not run in namespace:\n{stdout}\n{stderr}"
+    );
 }
 
 /// Mounts a fresh tmpfs at `dir` (created if missing).
@@ -54,9 +62,21 @@ fn mount_tmpfs(dir: &Path) {
     let c = |s: &[u8]| CString::new(s).unwrap();
     let (src, target, fstype) = (c(b"tmpfs"), c(dir.as_os_str().as_bytes()), c(b"tmpfs"));
     let rc = unsafe {
-        libc::mount(src.as_ptr(), target.as_ptr(), fstype.as_ptr(), 0, std::ptr::null())
+        libc::mount(
+            src.as_ptr(),
+            target.as_ptr(),
+            fstype.as_ptr(),
+            0,
+            std::ptr::null(),
+        )
     };
-    assert_eq!(rc, 0, "mount tmpfs at {}: {}", dir.display(), std::io::Error::last_os_error());
+    assert_eq!(
+        rc,
+        0,
+        "mount tmpfs at {}: {}",
+        dir.display(),
+        std::io::Error::last_os_error()
+    );
 }
 
 /// Mounts a tmpfs at `dir` holding one file `precious`, all `days` old.
@@ -72,12 +92,26 @@ fn old_tmpfs(dir: &Path, days: u64) -> PathBuf {
 fn with_ctx<R>(home: &Path, config: &Config, f: impl FnOnce(&ScanCtx) -> R) -> R {
     let protector = Protector::new(home, &config.protect);
     let tools = common::FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config,
+        protector: &protector,
+        tools: &tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     f(&ctx)
 }
 
 fn rule(root: &Path, unit: Unit) -> StoreRule {
-    StoreRule { root: root.to_path_buf(), max_age_days: 30, unit, glob: None, min_bytes: None }
+    StoreRule {
+        root: root.to_path_buf(),
+        max_age_days: 30,
+        unit,
+        glob: None,
+        min_bytes: None,
+    }
 }
 
 #[test]
@@ -132,10 +166,14 @@ fn artifact_mount_point_not_claimed() {
         mkfile(&p.join("package.json"), 10);
         let precious = old_tmpfs(&p.join("node_modules"), 60);
         let prot = Protector::new(home, &[]);
-        let (projects, skips) = discover(&[home.to_path_buf()], 6, &builtin_ecosystems(), &prot, home);
+        let (projects, skips) =
+            discover(&[home.to_path_buf()], 6, &builtin_ecosystems(), &prot, home);
         let found: Vec<&PathBuf> = projects.iter().flat_map(|p| &p.artifacts).collect();
         assert!(found.is_empty(), "{found:?}");
-        assert!(skips.iter().any(|s| s.title == "~/proj/node_modules"), "{skips:?}");
+        assert!(
+            skips.iter().any(|s| s.title == "~/proj/node_modules"),
+            "{skips:?}"
+        );
         assert!(precious.exists());
     });
 }
@@ -148,9 +186,14 @@ fn keep_newest_skips_mount_points() {
         mkfile(&runs.join("b/out.log"), 100);
         let mut config = Config::default();
         config.caches.stores.clear();
-        config.caches.keep_newest =
-            vec![KeepNewestCfg { path: runs.to_str().unwrap().into(), keep: 1 }];
-        let out = with_ctx(home, &config, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
+        config.caches.keep_newest = vec![KeepNewestCfg {
+            path: runs.to_str().unwrap().into(),
+            keep: 1,
+        }];
+        let out = with_ctx(home, &config, |ctx| {
+            Caches.scan(ctx, &mut InodeSet::default())
+        })
+        .unwrap();
         let planned: Vec<PathBuf> = out
             .entries
             .iter()
@@ -173,9 +216,14 @@ fn index_stays_on_device() {
         mkfile(&precious.with_file_name("more"), 1 << 20);
         let idx = cleaner::fsutil::usage::build(std::slice::from_ref(&r), &[], 16384, 0);
         let root = &idx.trees[0].node;
-        assert!(root.children.iter().all(|c| c.name != Path::new("mnt")), "{root:?}");
+        assert!(
+            root.children.iter().all(|c| c.name != Path::new("mnt")),
+            "{root:?}"
+        );
         assert_eq!(root.other_count, 0);
-        let want = cleaner::fsutil::measure::measure(&r.join("here"), &mut InodeSet::default()).unwrap().bytes;
+        let want = cleaner::fsutil::measure::measure(&r.join("here"), &mut InodeSet::default())
+            .unwrap()
+            .bytes;
         assert_eq!(root.bytes, want);
     });
 }
@@ -188,6 +236,12 @@ fn mount_point_is_same_dev_ancestor() {
     assert!(tmp.path().starts_with(&m), "{m:?}");
     let dev = |p: &Path| std::fs::metadata(p).unwrap().dev();
     assert_eq!(dev(&m), dev(tmp.path()));
-    assert!(m == Path::new("/") || dev(m.parent().unwrap()) != dev(&m), "{m:?}");
-    assert_eq!(cleaner::disk::mount_point(&tmp.path().join("missing")), None);
+    assert!(
+        m == Path::new("/") || dev(m.parent().unwrap()) != dev(&m),
+        "{m:?}"
+    );
+    assert_eq!(
+        cleaner::disk::mount_point(&tmp.path().join("missing")),
+        None
+    );
 }

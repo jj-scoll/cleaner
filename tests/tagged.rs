@@ -15,7 +15,15 @@ const TAG_REASON: &str = "CACHEDIR.TAG cache · untouched 40 days";
 fn scan_with(home: &Path, cfg: Config) -> ScanOutput {
     let protector = Protector::new(home, &cfg.protect);
     let tools = common::FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config: &cfg, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config: &cfg,
+        protector: &protector,
+        tools: &tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     Artifacts.scan(&ctx, &mut InodeSet::default()).unwrap()
 }
 
@@ -37,11 +45,17 @@ fn tagged(dir: &Path) {
 }
 
 fn tagged_entries(out: &ScanOutput) -> Vec<&Entry> {
-    out.entries.iter().filter(|e| e.reason.starts_with("CACHEDIR.TAG")).collect()
+    out.entries
+        .iter()
+        .filter(|e| e.reason.starts_with("CACHEDIR.TAG"))
+        .collect()
 }
 
 fn titles(out: &ScanOutput) -> Vec<&str> {
-    tagged_entries(out).iter().map(|e| e.title.as_str()).collect()
+    tagged_entries(out)
+        .iter()
+        .map(|e| e.title.as_str())
+        .collect()
 }
 
 fn targets(e: &Entry) -> Vec<PathBuf> {
@@ -73,7 +87,11 @@ fn bad_signature_ignored() {
     let h = tmp.path();
     tagged(&h.join("proj/good"));
     mkfile(&h.join("proj/bad/blob"), 100);
-    std::fs::write(h.join("proj/bad/CACHEDIR.TAG"), b"Signature: 00000000000000000000000000000000\n").unwrap();
+    std::fs::write(
+        h.join("proj/bad/CACHEDIR.TAG"),
+        b"Signature: 00000000000000000000000000000000\n",
+    )
+    .unwrap();
     mkfile(&h.join("proj/short/blob"), 100);
     std::fs::write(h.join("proj/short/CACHEDIR.TAG"), b"Signature: 8a47").unwrap();
     assert!(!has_cachedir_tag(&h.join("proj/bad")));
@@ -120,7 +138,10 @@ fn uv_tool_venv_never_listed() {
     mkfile(&venv.join("pyvenv.cfg"), 20);
     tag(&venv);
     tagged(&extra.path().join("share/other"));
-    let cfg = Config { scan_roots: vec!["~".into(), extra.path().display().to_string()], ..Config::default() };
+    let cfg = Config {
+        scan_roots: vec!["~".into(), extra.path().display().to_string()],
+        ..Config::default()
+    };
     let out = scan_with(h, cfg);
     let t = titles(&out);
     assert_eq!(t.len(), 1, "{:?}", out.entries);
@@ -137,7 +158,12 @@ fn uv_cache_denied() {
     // A tagged dir below the uv cache is just as dead to us.
     tagged(&h.join(".cache/uv/wheels-v5"));
     let out = scan_with(h, Config::default());
-    assert_eq!(titles(&out), vec!["~/.cache/fontconfig"], "{:?}", out.entries);
+    assert_eq!(
+        titles(&out),
+        vec!["~/.cache/fontconfig"],
+        "{:?}",
+        out.entries
+    );
 }
 
 #[test]
@@ -147,7 +173,12 @@ fn store_root_denied() {
     tagged(&h.join(".cache/pip"));
     tagged(&h.join(".cache/fontconfig"));
     let out = scan_with(h, Config::default());
-    assert_eq!(titles(&out), vec!["~/.cache/fontconfig"], "{:?}", out.entries);
+    assert_eq!(
+        titles(&out),
+        vec!["~/.cache/fontconfig"],
+        "{:?}",
+        out.entries
+    );
 }
 
 #[test]
@@ -173,7 +204,9 @@ fn tracked_tag_dir_skipped() {
     let out = scan_with(h, Config::default());
     assert!(tagged_entries(&out).is_empty(), "{:?}", out.entries);
     assert!(
-        out.skipped.iter().any(|s| s.title == "~/proj/out" &&s.reason == "tracked in git"),
+        out.skipped
+            .iter()
+            .any(|s| s.title == "~/proj/out" && s.reason == "tracked in git"),
         "{:?}",
         out.skipped
     );
@@ -197,7 +230,10 @@ fn protected_tag_never_listed() {
     let h = tmp.path();
     tagged(&h.join("keep/c"));
     tagged(&h.join("proj/ok"));
-    let cfg = Config { protect: vec!["~/keep".into()], ..Config::default() };
+    let cfg = Config {
+        protect: vec!["~/keep".into()],
+        ..Config::default()
+    };
     let out = scan_with(h, cfg);
     assert_eq!(titles(&out), vec!["~/proj/ok"], "{:?}", out.entries);
 }
@@ -210,7 +246,12 @@ fn tagged_entries_sorted_by_path() {
     tagged(&h.join("a/out"));
     tagged(&h.join(".cache/zz"));
     let out = scan_with(h, Config::default());
-    assert_eq!(titles(&out), vec!["~/.cache/zz", "~/a/out", "~/b/out"], "{:?}", out.entries);
+    assert_eq!(
+        titles(&out),
+        vec!["~/.cache/zz", "~/a/out", "~/b/out"],
+        "{:?}",
+        out.entries
+    );
 }
 
 #[test]
@@ -220,7 +261,10 @@ fn cache_child_containing_protected_not_listed() {
     tagged(&h.join(".cache/fontconfig"));
     mkfile(&h.join(".cache/fontconfig/keep/x"), 10);
     tagged(&h.join(".cache/other"));
-    let cfg = Config { protect: vec!["~/.cache/fontconfig/keep".into()], ..Config::default() };
+    let cfg = Config {
+        protect: vec!["~/.cache/fontconfig/keep".into()],
+        ..Config::default()
+    };
     let out = scan_with(h, cfg);
     assert_eq!(titles(&out), vec!["~/.cache/other"], "{:?}", out.entries);
 }

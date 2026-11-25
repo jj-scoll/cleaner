@@ -27,7 +27,9 @@ pub fn walk_dirs(
     visit: &mut dyn FnMut(&Path, usize),
 ) {
     for root in roots {
-        let Ok(root_md) = root.symlink_metadata() else { continue };
+        let Ok(root_md) = root.symlink_metadata() else {
+            continue;
+        };
         if !root_md.is_dir() || inside_protected(prot, root) {
             continue;
         }
@@ -38,7 +40,9 @@ pub fn walk_dirs(
             if depth >= max_depth {
                 continue;
             }
-            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            let Ok(rd) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in rd.flatten() {
                 let Ok(md) = entry.metadata() else { continue }; // lstat
                 let name = entry.file_name();

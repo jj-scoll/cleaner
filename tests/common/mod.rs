@@ -27,8 +27,12 @@ pub fn set_age(path: &Path, days: u64) {
 pub fn set_times(path: &Path, mtime_days: u64, atime_days: u64) {
     let ago = |d: u64| SystemTime::now() - Duration::from_secs(d * 86_400);
     let f = File::open(path).unwrap();
-    f.set_times(fs::FileTimes::new().set_modified(ago(mtime_days)).set_accessed(ago(atime_days)))
-        .unwrap();
+    f.set_times(
+        fs::FileTimes::new()
+            .set_modified(ago(mtime_days))
+            .set_accessed(ago(atime_days)),
+    )
+    .unwrap();
 }
 
 pub fn git(dir: &Path, args: &[&str]) {
@@ -65,7 +69,15 @@ pub fn git_commit_all(dir: &Path) {
     git(dir, &["add", "-A"]);
     git(
         dir,
-        &["-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "test"],
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "test",
+        ],
     );
 }
 
@@ -128,7 +140,10 @@ impl FakeRunner {
 
 impl Runner for FakeRunner {
     fn which(&self, program: &str) -> Option<PathBuf> {
-        self.installed.iter().find(|(p, _)| p == program).map(|(_, path)| path.clone())
+        self.installed
+            .iter()
+            .find(|(p, _)| p == program)
+            .map(|(_, path)| path.clone())
     }
 
     fn run(&self, program: &str, args: &[&OsStr], _timeout: Duration) -> Result<CmdOut, ToolError> {
@@ -149,20 +164,39 @@ impl Runner for FakeRunner {
         }
     }
 
-    fn run_interactive(&self, program: &str, args: &[&OsStr], timeout: Duration) -> Result<CmdOut, ToolError> {
+    fn run_interactive(
+        &self,
+        program: &str,
+        args: &[&OsStr],
+        timeout: Duration,
+    ) -> Result<CmdOut, ToolError> {
         let res = self.run(program, args, timeout);
-        let last = self.calls.lock().unwrap().last().cloned().unwrap_or_default();
+        let last = self
+            .calls
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .unwrap_or_default();
         self.interactive.lock().unwrap().push(last);
         res
     }
 }
 
 pub fn ok_out(stdout: &str) -> CmdOut {
-    CmdOut { code: Some(0), stdout: stdout.into(), stderr: String::new() }
+    CmdOut {
+        code: Some(0),
+        stdout: stdout.into(),
+        stderr: String::new(),
+    }
 }
 
 pub fn err_out(code: i32, stderr: &str) -> CmdOut {
-    CmdOut { code: Some(code), stdout: String::new(), stderr: stderr.into() }
+    CmdOut {
+        code: Some(code),
+        stdout: String::new(),
+        stderr: stderr.into(),
+    }
 }
 
 /// Creates `dir/bin` holding only a symlink to the real `git` and returns

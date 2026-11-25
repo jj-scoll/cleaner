@@ -61,7 +61,9 @@ pub fn registry(cfg: &Config) -> Vec<Box<dyn Category>> {
         cats.push(Box::new(Caches));
     }
     if cfg.app_caches.enabled {
-        cats.push(Box::new(AppCaches { proc_root: PathBuf::from("/proc") }));
+        cats.push(Box::new(AppCaches {
+            proc_root: PathBuf::from("/proc"),
+        }));
     }
     cats.push(Box::new(UserRules));
     if cfg.trash.enabled {
@@ -114,7 +116,11 @@ pub fn build_plan_with(
     };
     let total = cats.len();
     for (done, cat) in cats.iter().enumerate() {
-        progress(Progress { done, total, current: cat.id().into() });
+        progress(Progress {
+            done,
+            total,
+            current: cat.id().into(),
+        });
         let out = match cat.scan(&sc, &mut seen) {
             Ok(out) => out,
             Err(e) => {
@@ -132,12 +138,19 @@ pub fn build_plan_with(
             n += 1;
             e
         };
-        plan.entries.extend(out.entries.into_iter().map(&mut number));
-        plan.report_only.extend(out.report_only.into_iter().map(&mut number));
+        plan.entries
+            .extend(out.entries.into_iter().map(&mut number));
+        plan.report_only
+            .extend(out.report_only.into_iter().map(&mut number));
         plan.skipped.extend(out.skipped);
     }
-    plan.skipped.extend(root_skips(&ctx.config, &ctx.paths.home));
-    progress(Progress { done: total, total, current: String::new() });
+    plan.skipped
+        .extend(root_skips(&ctx.config, &ctx.paths.home));
+    progress(Progress {
+        done: total,
+        total,
+        current: String::new(),
+    });
     Ok(plan)
 }
 
@@ -180,7 +193,10 @@ pub fn filesystem_paths(config: &Config, home: &Path) -> Vec<PathBuf> {
         .map(|p| p.components().collect())
         .collect();
     // Not `expand_roots`: a nested root (a symlink under `~`) can be on another filesystem.
-    for root in all_root_strings(config).into_iter().flat_map(|r| crate::paths::expand(r, home)) {
+    for root in all_root_strings(config)
+        .into_iter()
+        .flat_map(|r| crate::paths::expand(r, home))
+    {
         // Resolve a symlinked root first so the label is its target's mount point.
         let real = std::fs::canonicalize(&root).unwrap_or(root);
         if let Some(m) = crate::disk::mount_point(&real)
@@ -201,7 +217,9 @@ pub fn root_skips(config: &Config, home: &Path) -> Vec<Skip> {
         for p in crate::paths::expand(root, home) {
             // `readlink` fails with EINVAL on a path ending in `/`; the walks strip it too.
             let p: PathBuf = p.components().collect();
-            let Ok(target) = std::fs::read_link(&p) else { continue };
+            let Ok(target) = std::fs::read_link(&p) else {
+                continue;
+            };
             out.push(Skip {
                 category: "scan_roots".into(),
                 title: root.clone(),
@@ -251,13 +269,23 @@ pub fn apply_plan_with(
     let sc = ctx.scan_ctx();
     let mut results = Vec::new();
     let mut lines = Vec::new();
-    let chosen: Vec<&Entry> = plan.entries.iter().filter(|e| ids.contains(&e.id)).collect();
+    let chosen: Vec<&Entry> = plan
+        .entries
+        .iter()
+        .filter(|e| ids.contains(&e.id))
+        .collect();
     let total = chosen.len();
     for (done, entry) in chosen.into_iter().enumerate() {
-        progress(Progress { done, total, current: entry.title.clone() });
+        progress(Progress {
+            done,
+            total,
+            current: entry.title.clone(),
+        });
         let outcome = match cats.iter().find(|c| c.id() == entry.category) {
             Some(cat) => cat.apply(entry, &sc),
-            None => Outcome::Skipped { reason: format!("category {} is not enabled", entry.category) },
+            None => Outcome::Skipped {
+                reason: format!("category {} is not enabled", entry.category),
+            },
         };
         let (word, bytes, detail) = match &outcome {
             Outcome::Deleted { bytes, failures } => ("deleted", *bytes, failures.join("; ")),
@@ -277,7 +305,11 @@ pub fn apply_plan_with(
         });
         results.push((entry.id.clone(), outcome));
     }
-    progress(Progress { done: total, total, current: String::new() });
+    progress(Progress {
+        done: total,
+        total,
+        current: String::new(),
+    });
 
     let after = crate::disk::usage(&fs_paths);
     let freed_by_fs = before
@@ -288,7 +320,11 @@ pub fn apply_plan_with(
         })
         .collect();
     crate::log::append(&ctx.paths.log_file, &lines)?;
-    Ok(RunReport { run_id, results, freed_by_fs })
+    Ok(RunReport {
+        run_id,
+        results,
+        freed_by_fs,
+    })
 }
 
 fn make_ctx(paths: &Paths, config: &Config, now: i64) -> Ctx {
@@ -339,7 +375,11 @@ pub fn plan_and_save_with(
     let mut save_error = None;
     match mode {
         IndexMode::Rebuild => {
-            progress(Progress { done: 0, total: cats.len(), current: "disk index".into() });
+            progress(Progress {
+                done: 0,
+                total: cats.len(),
+                current: "disk index".into(),
+            });
             let exclude: Vec<PathBuf> = EXCLUDE.iter().map(PathBuf::from).collect();
             let idx = build(&index_roots(config, &paths.home), &exclude, MIN_NODE, now);
             if let Err(e) = idx.save(&paths.usage_index) {
@@ -351,7 +391,11 @@ pub fn plan_and_save_with(
     }
     let mut plan = build_plan_with(&ctx, &cats, progress)?;
     if let Some(reason) = save_error {
-        plan.skipped.push(Skip { category: "disk_map".into(), title: "disk index".into(), reason });
+        plan.skipped.push(Skip {
+            category: "disk_map".into(),
+            title: "disk index".into(),
+            reason,
+        });
     }
     let path = plan.save(&paths.plans_dir)?;
     Ok((plan, path))

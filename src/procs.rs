@@ -25,19 +25,28 @@ pub fn exe_running(names: &[String], proc_root: &Path) -> bool {
     if names.is_empty() {
         return false;
     }
-    let Ok(rd) = std::fs::read_dir(proc_root) else { return false };
+    let Ok(rd) = std::fs::read_dir(proc_root) else {
+        return false;
+    };
     let named = |p: &Path| {
-        p.file_name().is_some_and(|n| names.iter().any(|name| n == name.as_str()))
+        p.file_name()
+            .is_some_and(|n| names.iter().any(|name| n == name.as_str()))
     };
     rd.flatten()
-        .filter(|e| e.file_name().to_str().is_some_and(|s| s.bytes().all(|b| b.is_ascii_digit())))
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|s| s.bytes().all(|b| b.is_ascii_digit()))
+        })
         .any(|e| {
             let dir = e.path();
             // Another user's process has an unreadable `exe`; its cmdline still reads.
             if std::fs::read_link(dir.join("exe")).is_ok_and(|exe| named(&exe)) {
                 return true;
             }
-            let Ok(cmdline) = std::fs::read(dir.join("cmdline")) else { return false };
+            let Ok(cmdline) = std::fs::read(dir.join("cmdline")) else {
+                return false;
+            };
             let argv0 = cmdline.split(|&b| b == 0).next().unwrap_or_default();
             std::str::from_utf8(argv0).is_ok_and(|a| named(Path::new(a)))
         })

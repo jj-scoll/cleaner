@@ -76,7 +76,10 @@ fn plan4_paths() {
     let h = std::path::Path::new("/home/x");
     let p = Paths::for_home(h);
     assert_eq!(p.usage_index, h.join(".local/state/cleaner/usage.json"));
-    assert_eq!(p.space_state, h.join(".local/state/cleaner/cleaner-space.json"));
+    assert_eq!(
+        p.space_state,
+        h.join(".local/state/cleaner/cleaner-space.json")
+    );
 }
 
 #[test]
@@ -86,6 +89,11 @@ fn expand_roots_drops_nested() {
     for d in ["a/b", "c"] {
         fs::create_dir_all(h.join(d)).unwrap();
     }
-    let roots: Vec<String> = ["~/a", "~/a/b", "~/c", "~/missing"].map(String::from).into();
-    assert_eq!(cleaner::paths::expand_roots(&roots, h), vec![h.join("a"), h.join("c")]);
+    let roots: Vec<String> = ["~/a", "~/a/b", "~/c", "~/missing"]
+        .map(String::from)
+        .into();
+    assert_eq!(
+        cleaner::paths::expand_roots(&roots, h),
+        vec![h.join("a"), h.join("c")]
+    );
 }

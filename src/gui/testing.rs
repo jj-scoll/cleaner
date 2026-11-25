@@ -57,8 +57,11 @@ impl TestApp {
             .application_id(format!("dev.cleaner.test{n}"))
             .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
             .build();
-        gapp.register(gtk::gio::Cancellable::NONE).expect("register");
-        TestApp { app: super::App::start(&gapp, paths, None) }
+        gapp.register(gtk::gio::Cancellable::NONE)
+            .expect("register");
+        TestApp {
+            app: super::App::start(&gapp, paths, None),
+        }
     }
 
     /// `App::open_usage`: the disk map level for `path` (roots for `None`).
@@ -74,6 +77,8 @@ impl TestApp {
     /// The navigation stack, bottom first.
     pub fn pages(&self) -> Vec<adw::NavigationPage> {
         let stack = self.app.nav.navigation_stack();
-        (0..stack.n_items()).filter_map(|i| stack.item(i).and_downcast()).collect()
+        (0..stack.n_items())
+            .filter_map(|i| stack.item(i).and_downcast())
+            .collect()
     }
 }

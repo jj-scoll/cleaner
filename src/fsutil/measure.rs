@@ -86,7 +86,9 @@ pub fn newest_mtime_excluding(root: &Path, skip: &dyn Fn(&Path) -> bool) -> i64 
     let mut newest = 0;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in rd.flatten() {
             let Ok(ft) = entry.file_type() else { continue };
             let p = entry.path();

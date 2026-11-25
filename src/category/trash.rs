@@ -28,8 +28,12 @@ impl Category for Trash {
         }
         let trash = ctx.home.join(".local/share/Trash");
         let (files_dir, info_dir) = (trash.join("files"), trash.join("info"));
-        let Ok(rd) = std::fs::read_dir(&info_dir) else { return Ok(out) };
-        let cutoff = ctx.now.saturating_sub(cfg.max_age_days.saturating_mul(86_400) as i64);
+        let Ok(rd) = std::fs::read_dir(&info_dir) else {
+            return Ok(out);
+        };
+        let cutoff = ctx
+            .now
+            .saturating_sub(cfg.max_age_days.saturating_mul(86_400) as i64);
 
         let mut infos: Vec<_> = rd
             .flatten()
@@ -39,7 +43,9 @@ impl Category for Trash {
         infos.sort();
         for info in infos {
             let fname = info.file_name().unwrap_or_default().as_bytes();
-            let Some(name) = fname.strip_suffix(b".trashinfo") else { continue };
+            let Some(name) = fname.strip_suffix(b".trashinfo") else {
+                continue;
+            };
             let payload = files_dir.join(OsStr::from_bytes(name));
             let skip = |reason: &str| Skip {
                 category: ID.into(),
@@ -77,7 +83,10 @@ impl Category for Trash {
                     out.skipped.push(skip("Trash payload is a symlink"));
                     continue;
                 }
-                Ok(_) => (vec![payload.as_path(), info.as_path()], format!("in Trash since {date}")),
+                Ok(_) => (
+                    vec![payload.as_path(), info.as_path()],
+                    format!("in Trash since {date}"),
+                ),
             };
             match item(&paths, reason, ctx.home, seen) {
                 Some(e) => out.entries.push(e),
@@ -93,7 +102,9 @@ impl Category for Trash {
 fn deletion_date(info: &Path) -> Option<(jiff::civil::Date, i64)> {
     let text = std::fs::read(info).ok()?;
     let text = String::from_utf8_lossy(&text);
-    let value = text.lines().find_map(|l| l.trim().strip_prefix("DeletionDate="))?;
+    let value = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("DeletionDate="))?;
     let dt: jiff::civil::DateTime = value.trim().parse().ok()?;
     let ts = dt.to_zoned(jiff::tz::TimeZone::system()).ok()?.timestamp();
     Some((dt.date(), ts.as_second()))
@@ -104,7 +115,10 @@ fn item(paths: &[&Path], reason: String, home: &Path, seen: &mut InodeSet) -> Op
     let mut targets = Vec::new();
     let mut bytes = 0;
     for p in paths {
-        targets.push(Target { path: p.to_path_buf(), fp: fingerprint(p).ok()? });
+        targets.push(Target {
+            path: p.to_path_buf(),
+            fp: fingerprint(p).ok()?,
+        });
         bytes += measure(p, seen).ok()?.bytes;
     }
     Some(Entry {

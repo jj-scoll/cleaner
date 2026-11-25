@@ -22,7 +22,10 @@ pub fn parse_time(s: &str) -> anyhow::Result<(u8, u8)> {
     if b.len() != 5 || b[2] != b':' || ![0, 1, 3, 4].iter().all(|&i| b[i].is_ascii_digit()) {
         return Err(bad());
     }
-    let (h, m) = ((b[0] - b'0') * 10 + b[1] - b'0', (b[3] - b'0') * 10 + b[4] - b'0');
+    let (h, m) = (
+        (b[0] - b'0') * 10 + b[1] - b'0',
+        (b[3] - b'0') * 10 + b[4] - b'0',
+    );
     if h > 23 || m > 59 {
         return Err(bad());
     }
@@ -75,9 +78,18 @@ pub fn render_space_service(exe: &Path) -> String {
 
 /// `^[1-9][0-9]*(min|h)$`.
 pub fn parse_interval(s: &str) -> anyhow::Result<()> {
-    let digits = s.strip_suffix("min").or_else(|| s.strip_suffix('h')).unwrap_or("");
-    let ok = digits.bytes().all(|b| b.is_ascii_digit()) && !digits.is_empty() && !digits.starts_with('0');
-    if ok { Ok(()) } else { bail!("invalid interval {s:?} (expected e.g. 10min or 1h)") }
+    let digits = s
+        .strip_suffix("min")
+        .or_else(|| s.strip_suffix('h'))
+        .unwrap_or("");
+    let ok = digits.bytes().all(|b| b.is_ascii_digit())
+        && !digits.is_empty()
+        && !digits.starts_with('0');
+    if ok {
+        Ok(())
+    } else {
+        bail!("invalid interval {s:?} (expected e.g. 10min or 1h)")
+    }
 }
 
 pub fn render_space_timer(interval: &str) -> anyhow::Result<String> {
@@ -126,16 +138,22 @@ fn unit_files(paths: &Paths) -> [PathBuf; 3] {
 }
 
 fn space_files(paths: &Paths) -> [PathBuf; 2] {
-    [paths.systemd_user_dir.join(SPACE_SERVICE), paths.systemd_user_dir.join(SPACE_TIMER)]
+    [
+        paths.systemd_user_dir.join(SPACE_SERVICE),
+        paths.systemd_user_dir.join(SPACE_TIMER),
+    ]
 }
 
-const NIX_MANAGED: &str = "the timers are managed by Nix; change services.cleaner in your home-manager config instead";
+const NIX_MANAGED: &str =
+    "the timers are managed by Nix; change services.cleaner in your home-manager config instead";
 
 /// Whether the nightly units are symlinks into the Nix store, as
 /// home-manager's `services.cleaner` links them. Nix owns them then.
 pub fn nix_managed(paths: &Paths) -> bool {
     let [service, timer, _] = unit_files(paths);
-    [service, timer].iter().any(|f| std::fs::read_link(f).is_ok_and(|t| t.starts_with("/nix/store")))
+    [service, timer]
+        .iter()
+        .any(|f| std::fs::read_link(f).is_ok_and(|t| t.starts_with("/nix/store")))
 }
 
 fn remove_if_present(f: &Path) -> anyhow::Result<()> {
@@ -162,9 +180,17 @@ pub(crate) fn write_atomic(path: &Path, text: &str) -> anyhow::Result<()> {
 /// `systemctl --user <args>`; a non-zero exit is an error carrying its stderr.
 fn systemctl(args: &[&str]) -> anyhow::Result<String> {
     let what = || format!("running systemctl --user {}", args.join(" "));
-    let out = Command::new("systemctl").arg("--user").args(args).output().with_context(what)?;
+    let out = Command::new("systemctl")
+        .arg("--user")
+        .args(args)
+        .output()
+        .with_context(what)?;
     if !out.status.success() {
-        bail!("{} failed: {}", what(), String::from_utf8_lossy(&out.stderr).trim());
+        bail!(
+            "{} failed: {}",
+            what(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -203,7 +229,9 @@ pub fn install(paths: &Paths, config: &Config, exe: &Path) -> anyhow::Result<()>
 /// removes its two files if present.
 fn remove_space_units(paths: &Paths) -> anyhow::Result<()> {
     let _ = systemctl(&["disable", "--now", SPACE_TIMER]);
-    space_files(paths).iter().try_for_each(|f| remove_if_present(f))
+    space_files(paths)
+        .iter()
+        .try_for_each(|f| remove_if_present(f))
 }
 
 /// Disables both timers (a failure, e.g. not enabled, is ignored), removes the
@@ -214,7 +242,11 @@ pub fn uninstall(paths: &Paths) -> anyhow::Result<()> {
     }
     let _ = systemctl(&["disable", "--now", TIMER]);
     let _ = systemctl(&["disable", "--now", SPACE_TIMER]);
-    for f in unit_files(paths).iter().chain(space_files(paths).iter()).chain([&icon_file(paths)]) {
+    for f in unit_files(paths)
+        .iter()
+        .chain(space_files(paths).iter())
+        .chain([&icon_file(paths)])
+    {
         remove_if_present(f)?;
     }
     systemctl(&["daemon-reload"])?;

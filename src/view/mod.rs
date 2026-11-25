@@ -31,8 +31,10 @@ pub fn category_label(id: &str) -> String {
 
 /// Category ids in display order, followed by any others the plan mentions.
 pub fn category_order(plan: &Plan) -> Vec<String> {
-    let mut order: Vec<String> =
-        registry(&Config::default()).iter().map(|c| c.id().to_string()).collect();
+    let mut order: Vec<String> = registry(&Config::default())
+        .iter()
+        .map(|c| c.id().to_string())
+        .collect();
     let ids = plan
         .entries
         .iter()

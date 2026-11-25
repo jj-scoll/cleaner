@@ -25,7 +25,13 @@ fn age_tree(root: &Path, days: u64) {
 }
 
 fn rule(root: &Path, days: u64, unit: Unit) -> StoreRule {
-    StoreRule { root: root.to_path_buf(), max_age_days: days, unit, glob: None, min_bytes: None }
+    StoreRule {
+        root: root.to_path_buf(),
+        max_age_days: days,
+        unit,
+        glob: None,
+        min_bytes: None,
+    }
 }
 
 fn matches(rule: &StoreRule, home: &Path) -> Vec<PathBuf> {
@@ -49,16 +55,33 @@ fn with_tools<R>(
     f: impl FnOnce(&ScanCtx) -> R,
 ) -> R {
     let protector = Protector::new(home, &config.protect);
-    let ctx = ScanCtx { home, now: now(), config, protector: &protector, tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config,
+        protector: &protector,
+        tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     f(&ctx)
 }
 
 #[test]
 fn unit_parses() {
-    assert_eq!("files".parse::<Unit>().unwrap(), Unit::Files { recursive: false });
-    assert_eq!("files-recursive".parse::<Unit>().unwrap(), Unit::Files { recursive: true });
+    assert_eq!(
+        "files".parse::<Unit>().unwrap(),
+        Unit::Files { recursive: false }
+    );
+    assert_eq!(
+        "files-recursive".parse::<Unit>().unwrap(),
+        Unit::Files { recursive: true }
+    );
     assert_eq!("depth:1".parse::<Unit>().unwrap(), Unit::Depth(1));
-    assert_eq!("name-contains:@".parse::<Unit>().unwrap(), Unit::NameContains("@".into()));
+    assert_eq!(
+        "name-contains:@".parse::<Unit>().unwrap(),
+        Unit::NameContains("@".into())
+    );
     assert!("depth:x".parse::<Unit>().is_err());
     assert!("bogus".parse::<Unit>().is_err());
 }
@@ -113,7 +136,10 @@ fn name_contains_go_modules() {
 
     let config = Config::default();
     let out = with_ctx(home, &config, |ctx| apply_rule(&r, ctx));
-    assert!(matches!(out, Outcome::Deleted { bytes, .. } if bytes > 0), "{out:?}");
+    assert!(
+        matches!(out, Outcome::Deleted { bytes, .. } if bytes > 0),
+        "{out:?}"
+    );
     assert!(!module.exists());
     assert!(root.join("github.com/x").exists());
 }
@@ -129,15 +155,22 @@ fn keep_newest_one_run() {
     age_tree(&runs.join("b"), 1);
     let mut config = Config::default();
     config.caches.stores.clear();
-    config.caches.keep_newest =
-        vec![KeepNewestCfg { path: runs.to_str().unwrap().into(), keep: 1 }];
-    let out = with_ctx(home, &config, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
+    config.caches.keep_newest = vec![KeepNewestCfg {
+        path: runs.to_str().unwrap().into(),
+        keep: 1,
+    }];
+    let out = with_ctx(home, &config, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
     assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
     let e = &out.entries[0];
     assert!(e.selected);
     assert_eq!(e.reason, "older run; keeping newest 1");
     assert_eq!(e.title, "~/runs/a");
-    let EntryKind::Item { targets } = &e.kind else { panic!("not an item") };
+    let EntryKind::Item { targets } = &e.kind else {
+        panic!("not an item")
+    };
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].path, runs.join("a"));
 }
@@ -150,7 +183,10 @@ fn caches_scan_entry_shape() {
     mkfile(&pip.join("x"), 5000);
     set_age(&pip.join("x"), 40);
     let config = Config::default();
-    let out = with_ctx(home, &config, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
+    let out = with_ctx(home, &config, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
     assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
     let e = &out.entries[0];
     assert_eq!(e.category, "caches");
@@ -159,7 +195,9 @@ fn caches_scan_entry_shape() {
     // Shown under `~`; the rule keeps the absolute path it deletes under.
     assert_eq!(e.title, "~/.cache/pip");
     assert_eq!(e.reason, "1 item untouched for 30+ days");
-    let EntryKind::StoreRule { rule } = &e.kind else { panic!("not a store rule") };
+    let EntryKind::StoreRule { rule } = &e.kind else {
+        panic!("not a store rule")
+    };
     assert_eq!(rule.root, pip);
     assert_eq!(rule.unit, Unit::Files { recursive: true });
 }
@@ -173,7 +211,10 @@ fn caches_reason_counts_items() {
         mkfile(&pip.join(f), 5000);
         set_age(&pip.join(f), 40);
     }
-    let out = with_ctx(home, &Config::default(), |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
+    let out = with_ctx(home, &Config::default(), |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
     assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
     assert_eq!(out.entries[0].reason, "2 items untouched for 30+ days");
 }
@@ -220,7 +261,9 @@ fn uv_entry() -> Entry {
         id: "caches-uv".into(),
         category: "caches".into(),
         title: "uv cache prune".into(),
-        kind: EntryKind::Operation { op: Operation::UvCachePrune },
+        kind: EntryKind::Operation {
+            op: Operation::UvCachePrune,
+        },
         bytes: 0,
         reason: "removes cache entries no venv uses (uv decides)".into(),
         selected: true,
@@ -251,9 +294,20 @@ fn uv_prune_skipped_while_uv_holds_its_lock() {
     let tools = uv_tools(&cache).respond("uv cache prune", ok_out("Removed 1 file (1B)\n"));
     let _held = hold_uv_lock(&cache);
     let config = Config::default();
-    let got = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&uv_entry(), ctx));
-    assert_eq!(got, Outcome::Skipped { reason: "uv cache is in use by running uv processes".into() });
-    assert_eq!(tools.calls(), vec!["uv cache dir".to_string()], "never prunes, never --force");
+    let got = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&uv_entry(), ctx)
+    });
+    assert_eq!(
+        got,
+        Outcome::Skipped {
+            reason: "uv cache is in use by running uv processes".into()
+        }
+    );
+    assert_eq!(
+        tools.calls(),
+        vec!["uv cache dir".to_string()],
+        "never prunes, never --force"
+    );
 }
 
 #[test]
@@ -265,11 +319,20 @@ fn uv_prune_note_says_cache_in_use() {
     let tools = uv_tools(&cache);
     let _held = hold_uv_lock(&cache);
     let config = Config::default();
-    let out =
-        with_tools(&home, &config, &tools, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
-    let e = out.entries.iter().find(|e| e.title == "uv cache prune").expect("uv entry");
+    let out = with_tools(&home, &config, &tools, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
+    let e = out
+        .entries
+        .iter()
+        .find(|e| e.title == "uv cache prune")
+        .expect("uv entry");
     let note = e.note.as_deref().unwrap();
-    assert!(note.ends_with("; in use by running uv processes now, so apply may skip it"), "{note}");
+    assert!(
+        note.ends_with("; in use by running uv processes now, so apply may skip it"),
+        "{note}"
+    );
 }
 
 #[test]
@@ -279,20 +342,39 @@ fn uv_prune_planned() {
     std::fs::create_dir_all(&home).unwrap();
     let cache = tmp.path().join("uvcache");
     mkfile(&cache.join("archive-v0/blob"), 8192);
-    let tools = FakeRunner::new().respond("uv cache dir", ok_out(&format!("{}\n", cache.display())));
+    let tools =
+        FakeRunner::new().respond("uv cache dir", ok_out(&format!("{}\n", cache.display())));
     let config = Config::default();
-    let out =
-        with_tools(&home, &config, &tools, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
-    let e = out.entries.iter().find(|e| e.title == "uv cache prune").expect("uv entry");
-    assert_eq!(e.kind, EntryKind::Operation { op: Operation::UvCachePrune });
+    let out = with_tools(&home, &config, &tools, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
+    let e = out
+        .entries
+        .iter()
+        .find(|e| e.title == "uv cache prune")
+        .expect("uv entry");
+    assert_eq!(
+        e.kind,
+        EntryKind::Operation {
+            op: Operation::UvCachePrune
+        }
+    );
     assert!(e.selected);
     assert!(e.is_estimate());
     assert_eq!(e.bytes, 0);
     assert_eq!(e.reason, "removes cache entries no venv uses (uv decides)");
     let note = e.note.as_deref().unwrap();
-    assert!(note.starts_with("uv reports the size after it runs; "), "{note}");
+    assert!(
+        note.starts_with("uv reports the size after it runs; "),
+        "{note}"
+    );
     assert!(note.ends_with("cache is 8.0 KiB"), "{note}");
-    assert!(out.skipped.iter().all(|s| s.title != "uv cache prune"), "{:?}", out.skipped);
+    assert!(
+        out.skipped.iter().all(|s| s.title != "uv cache prune"),
+        "{:?}",
+        out.skipped
+    );
 }
 
 #[test]
@@ -304,8 +386,16 @@ fn uv_missing_skips() {
         Caches.scan(ctx, &mut InodeSet::default())
     })
     .unwrap();
-    assert!(out.entries.iter().all(|e| e.title != "uv cache prune"), "{:?}", out.entries);
-    let skip = out.skipped.iter().find(|s| s.title == "uv cache prune").expect("uv skip");
+    assert!(
+        out.entries.iter().all(|e| e.title != "uv cache prune"),
+        "{:?}",
+        out.entries
+    );
+    let skip = out
+        .skipped
+        .iter()
+        .find(|s| s.title == "uv cache prune")
+        .expect("uv skip");
     assert_eq!(skip.category, "caches");
     assert_eq!(skip.reason, "uv is not installed");
 }
@@ -319,10 +409,20 @@ fn uv_cache_protected_skips() {
     let mut config = Config::default();
     config.protect.push(cache.to_str().unwrap().into());
     let tools = FakeRunner::new().respond("uv cache dir", ok_out(cache.to_str().unwrap()));
-    let out =
-        with_tools(home, &config, &tools, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
-    assert!(out.entries.iter().all(|e| e.title != "uv cache prune"), "{:?}", out.entries);
-    let skip = out.skipped.iter().find(|s| s.title == "uv cache prune").expect("uv skip");
+    let out = with_tools(home, &config, &tools, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
+    assert!(
+        out.entries.iter().all(|e| e.title != "uv cache prune"),
+        "{:?}",
+        out.entries
+    );
+    let skip = out
+        .skipped
+        .iter()
+        .find(|s| s.title == "uv cache prune")
+        .expect("uv skip");
     assert_eq!(skip.reason, "protected");
 }
 
@@ -330,11 +430,24 @@ fn uv_cache_protected_skips() {
 fn uv_prune_reports_freed() {
     let tmp = tempfile::tempdir().unwrap();
     let config = Config::default();
-    let tools = uv_tools(&tmp.path().join("uvcache"))
-        .respond("uv cache prune", ok_out("Pruning cache at: /x\nRemoved 120 files (12.5MiB)\n"));
-    let out = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&uv_entry(), ctx));
-    assert_eq!(out, Outcome::Deleted { bytes: 13_107_200, failures: vec![] });
-    assert_eq!(tools.calls(), vec!["uv cache dir".to_string(), "uv cache prune".to_string()]);
+    let tools = uv_tools(&tmp.path().join("uvcache")).respond(
+        "uv cache prune",
+        ok_out("Pruning cache at: /x\nRemoved 120 files (12.5MiB)\n"),
+    );
+    let out = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&uv_entry(), ctx)
+    });
+    assert_eq!(
+        out,
+        Outcome::Deleted {
+            bytes: 13_107_200,
+            failures: vec![]
+        }
+    );
+    assert_eq!(
+        tools.calls(),
+        vec!["uv cache dir".to_string(), "uv cache prune".to_string()]
+    );
 }
 
 #[test]
@@ -344,22 +457,46 @@ fn uv_prune_reads_stderr_and_nothing_to_do() {
     let mut out = ok_out("");
     out.stderr = "Removed 3 files (1.5KiB)\n".into();
     let tools = uv_tools(&tmp.path().join("uvcache")).respond("uv cache prune", out);
-    let got = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&uv_entry(), ctx));
-    assert_eq!(got, Outcome::Deleted { bytes: 1536, failures: vec![] });
+    let got = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&uv_entry(), ctx)
+    });
+    assert_eq!(
+        got,
+        Outcome::Deleted {
+            bytes: 1536,
+            failures: vec![]
+        }
+    );
 
-    let tools = uv_tools(&tmp.path().join("uvcache")).respond("uv cache prune", ok_out("No unused entries found\n"));
-    let got = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&uv_entry(), ctx));
-    assert_eq!(got, Outcome::Deleted { bytes: 0, failures: vec![] });
+    let tools = uv_tools(&tmp.path().join("uvcache"))
+        .respond("uv cache prune", ok_out("No unused entries found\n"));
+    let got = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&uv_entry(), ctx)
+    });
+    assert_eq!(
+        got,
+        Outcome::Deleted {
+            bytes: 0,
+            failures: vec![]
+        }
+    );
 }
 
 #[test]
 fn uv_prune_nonzero_is_failed() {
     let tmp = tempfile::tempdir().unwrap();
     let config = Config::default();
-    let tools =
-        uv_tools(&tmp.path().join("uvcache")).respond("uv cache prune", err_out(2, "error: lock held\nmore\n"));
-    let got = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&uv_entry(), ctx));
-    assert_eq!(got, Outcome::Failed { error: "uv cache prune failed: error: lock held".into() });
+    let tools = uv_tools(&tmp.path().join("uvcache"))
+        .respond("uv cache prune", err_out(2, "error: lock held\nmore\n"));
+    let got = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&uv_entry(), ctx)
+    });
+    assert_eq!(
+        got,
+        Outcome::Failed {
+            error: "uv cache prune failed: error: lock held".into()
+        }
+    );
 }
 
 #[test]
@@ -367,10 +504,17 @@ fn uv_prune_timeout_is_failed() {
     let tmp = tempfile::tempdir().unwrap();
     let config = Config::default();
     let tools = uv_tools(&tmp.path().join("uvcache")).timeout("uv cache prune", 600);
-    let got = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&uv_entry(), ctx));
-    let Outcome::Failed { error } = got else { panic!("not failed: {got:?}") };
+    let got = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&uv_entry(), ctx)
+    });
+    let Outcome::Failed { error } = got else {
+        panic!("not failed: {got:?}")
+    };
     assert!(error.contains("timed out"), "{error}");
-    assert_eq!(error, "uv cache prune timed out after 600s (uv cache in use?)");
+    assert_eq!(
+        error,
+        "uv cache prune timed out after 600s (uv cache in use?)"
+    );
 }
 
 #[test]
@@ -391,22 +535,32 @@ fn uv_prune_off() {
 
 fn caches_scan(home: &Path) -> cleaner::category::ScanOutput {
     let config = Config::default();
-    with_ctx(home, &config, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap()
+    with_ctx(home, &config, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap()
 }
 
 fn store_entry<'a>(out: &'a cleaner::category::ScanOutput, root: &Path) -> Option<&'a Entry> {
-    out.entries.iter().find(|e| matches!(&e.kind, EntryKind::StoreRule { rule } if rule.root == root))
+    out.entries
+        .iter()
+        .find(|e| matches!(&e.kind, EntryKind::StoreRule { rule } if rule.root == root))
 }
 
 fn entry_matches(e: &Entry, home: &Path) -> Vec<PathBuf> {
-    let EntryKind::StoreRule { rule } = &e.kind else { panic!("not a store rule") };
+    let EntryKind::StoreRule { rule } = &e.kind else {
+        panic!("not a store rule")
+    };
     matches(rule, home)
 }
 
 #[test]
 fn default_stores_plan4() {
     let v = cleaner::config::default_stores();
-    let has = |p: &str, d: u64, u: &str| v.iter().any(|s| s.path == p && s.max_age_days == d && s.unit == u);
+    let has = |p: &str, d: u64, u: &str| {
+        v.iter()
+            .any(|s| s.path == p && s.max_age_days == d && s.unit == u)
+    };
     assert!(has("~/.cache/terragrunt*/providers", 30, "depth:4"));
     assert!(has("~/.cache/tofu-plugins*", 30, "depth:4"));
     assert!(v.iter().all(|s| s.path != "~/.cache/terragrunt*"));
@@ -428,7 +582,11 @@ fn terragrunt_provider_version_is_the_unit() {
     let e = store_entry(&out, &tg.join("providers")).expect("providers entry");
     assert_eq!(e.title, "~/.cache/terragrunt/providers");
     assert_eq!(entry_matches(e, home), vec![old]);
-    assert!(out.entries.iter().all(|e| !e.title.ends_with("cas")), "{:?}", out.entries);
+    assert!(
+        out.entries.iter().all(|e| !e.title.ends_with("cas")),
+        "{:?}",
+        out.entries
+    );
 }
 
 #[test]
@@ -436,7 +594,10 @@ fn tofu_plugins_version_is_the_unit() {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path();
     let root = home.join(".cache/tofu-plugins-nb");
-    mkfile(&root.join("registry.opentofu.org/datadog/datadog/4.25.0/f"), 1000);
+    mkfile(
+        &root.join("registry.opentofu.org/datadog/datadog/4.25.0/f"),
+        1000,
+    );
     age_tree(&root, 40);
     let out = caches_scan(home);
     let e = store_entry(&out, &root).expect("tofu entry");
@@ -456,13 +617,19 @@ fn verify_tool_config() -> Config {
         glob: None,
         min_bytes: None,
     });
-    config.caches.keep_newest.push(KeepNewestCfg { path: "~/.cache/verify-tool/runs".into(), keep: 1 });
+    config.caches.keep_newest.push(KeepNewestCfg {
+        path: "~/.cache/verify-tool/runs".into(),
+        keep: 1,
+    });
     config
 }
 
 fn verify_tool_scan(home: &Path) -> cleaner::category::ScanOutput {
     let config = verify_tool_config();
-    with_ctx(home, &config, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap()
+    with_ctx(home, &config, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap()
 }
 
 fn tg_run(home: &Path, run: &str, days: u64) -> PathBuf {
@@ -482,12 +649,22 @@ fn tg_cache_store_matches_after_3_days() {
     let e = store_entry(&out, &r1.join("tg-cache")).expect("tg-cache entry");
     assert!(e.selected);
     assert_eq!(entry_matches(e, home), vec![r1.join("tg-cache/emc-prod")]);
-    assert!(out.entries.iter().all(|e| matches!(e.kind, EntryKind::StoreRule { .. })), "{:?}", out.entries);
+    assert!(
+        out.entries
+            .iter()
+            .all(|e| matches!(e.kind, EntryKind::StoreRule { .. })),
+        "{:?}",
+        out.entries
+    );
 
     let tmp = tempfile::tempdir().unwrap();
     let r1 = tg_run(tmp.path(), "r1", 2);
     let out = verify_tool_scan(tmp.path());
-    assert!(store_entry(&out, &r1.join("tg-cache")).is_none(), "{:?}", out.entries);
+    assert!(
+        store_entry(&out, &r1.join("tg-cache")).is_none(),
+        "{:?}",
+        out.entries
+    );
     assert!(out.entries.is_empty(), "{:?}", out.entries);
 }
 
@@ -532,9 +709,16 @@ fn terragrunt_inf_root_owned_is_skip() {
     };
     let out = Caches.scan(&ctx, &mut InodeSet::default()).unwrap();
     assert!(store_entry(&out, &root).is_none(), "{:?}", out.entries);
-    let skips: Vec<_> = out.skipped.iter().filter(|s| s.title == "~/.cache/terragrunt-inf/providers").collect();
+    let skips: Vec<_> = out
+        .skipped
+        .iter()
+        .filter(|s| s.title == "~/.cache/terragrunt-inf/providers")
+        .collect();
     assert_eq!(skips.len(), 1, "{:?}", out.skipped);
-    assert_eq!(skips[0].reason, cleaner::category::store::foreign_reason(common::my_uid()));
+    assert_eq!(
+        skips[0].reason,
+        cleaner::category::store::foreign_reason(common::my_uid())
+    );
 }
 
 const GO_REASON: &str = "removes the whole Go module cache, including modules in use";
@@ -544,7 +728,9 @@ fn go_entry() -> Entry {
         id: "caches-go".into(),
         category: "caches".into(),
         title: "go clean -modcache".into(),
-        kind: EntryKind::Operation { op: Operation::GoCleanModcache },
+        kind: EntryKind::Operation {
+            op: Operation::GoCleanModcache,
+        },
         bytes: 8192,
         reason: GO_REASON.into(),
         selected: false,
@@ -558,7 +744,8 @@ fn go_entry() -> Entry {
 fn go_tools(home: &Path) -> (PathBuf, FakeRunner) {
     let dir = home.join("go/pkg/mod");
     mkfile(&dir.join("x@v1/f"), 8192);
-    let tools = FakeRunner::new().respond("go env GOMODCACHE", ok_out(&format!("{}\n", dir.display())));
+    let tools =
+        FakeRunner::new().respond("go env GOMODCACHE", ok_out(&format!("{}\n", dir.display())));
     (dir, tools)
 }
 
@@ -569,16 +756,35 @@ fn go_modcache_row_unticked() {
     let (dir, tools) = go_tools(home);
     let mut config = Config::default();
     config.caches.uv_prune = false;
-    let out =
-        with_tools(home, &config, &tools, |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
-    let e = out.entries.iter().find(|e| e.title == "go clean -modcache").expect("go entry");
-    assert_eq!(e.kind, EntryKind::Operation { op: Operation::GoCleanModcache });
+    let out = with_tools(home, &config, &tools, |ctx| {
+        Caches.scan(ctx, &mut InodeSet::default())
+    })
+    .unwrap();
+    let e = out
+        .entries
+        .iter()
+        .find(|e| e.title == "go clean -modcache")
+        .expect("go entry");
+    assert_eq!(
+        e.kind,
+        EntryKind::Operation {
+            op: Operation::GoCleanModcache
+        }
+    );
     assert!(!e.selected);
     assert!(e.is_estimate());
-    assert_eq!(e.bytes, cleaner::fsutil::measure::measure(&dir, &mut InodeSet::default()).unwrap().bytes);
+    assert_eq!(
+        e.bytes,
+        cleaner::fsutil::measure::measure(&dir, &mut InodeSet::default())
+            .unwrap()
+            .bytes
+    );
     assert!(e.bytes >= 8192);
     assert_eq!(e.reason, GO_REASON);
-    assert_eq!(e.note.as_deref(), Some("go decides what goes; size is the whole cache"));
+    assert_eq!(
+        e.note.as_deref(),
+        Some("go decides what goes; size is the whole cache")
+    );
     assert_eq!(tools.calls(), vec!["go env GOMODCACHE".to_string()]);
 }
 
@@ -593,7 +799,11 @@ fn go_missing_is_skip() {
     })
     .unwrap();
     assert!(out.entries.iter().all(|e| e.title != "go clean -modcache"));
-    let skip = out.skipped.iter().find(|s| s.title == "go clean -modcache").expect("go skip");
+    let skip = out
+        .skipped
+        .iter()
+        .find(|s| s.title == "go clean -modcache")
+        .expect("go skip");
     assert_eq!(skip.category, "caches");
     assert_eq!(skip.reason, "go is not installed");
 }
@@ -604,10 +814,24 @@ fn go_clean_apply_runs_command() {
     let (_, tools) = go_tools(tmp.path());
     let tools = tools.respond("go clean -modcache", ok_out(""));
     let config = Config::default();
-    let out = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&go_entry(), ctx));
+    let out = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&go_entry(), ctx)
+    });
     // The fake does not delete anything, so before == after.
-    assert_eq!(out, Outcome::Deleted { bytes: 0, failures: vec![] });
-    assert_eq!(tools.calls(), vec!["go env GOMODCACHE".to_string(), "go clean -modcache".to_string()]);
+    assert_eq!(
+        out,
+        Outcome::Deleted {
+            bytes: 0,
+            failures: vec![]
+        }
+    );
+    assert_eq!(
+        tools.calls(),
+        vec![
+            "go env GOMODCACHE".to_string(),
+            "go clean -modcache".to_string()
+        ]
+    );
 }
 
 #[test]
@@ -616,8 +840,15 @@ fn go_clean_failure_is_failed() {
     let (_, tools) = go_tools(tmp.path());
     let tools = tools.respond("go clean -modcache", err_out(1, "permission denied\nmore"));
     let config = Config::default();
-    let out = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&go_entry(), ctx));
-    assert_eq!(out, Outcome::Failed { error: "go clean -modcache failed: permission denied".into() });
+    let out = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&go_entry(), ctx)
+    });
+    assert_eq!(
+        out,
+        Outcome::Failed {
+            error: "go clean -modcache failed: permission denied".into()
+        }
+    );
 }
 
 #[test]
@@ -626,8 +857,15 @@ fn go_clean_timeout() {
     let (_, tools) = go_tools(tmp.path());
     let tools = tools.timeout("go clean", 600);
     let config = Config::default();
-    let out = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&go_entry(), ctx));
-    assert_eq!(out, Outcome::Failed { error: "go clean -modcache timed out after 600s".into() });
+    let out = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&go_entry(), ctx)
+    });
+    assert_eq!(
+        out,
+        Outcome::Failed {
+            error: "go clean -modcache timed out after 600s".into()
+        }
+    );
 }
 
 #[test]
@@ -635,8 +873,15 @@ fn go_clean_apply_missing_is_skipped() {
     let tmp = tempfile::tempdir().unwrap();
     let config = Config::default();
     let tools = FakeRunner::new();
-    let out = with_tools(tmp.path(), &config, &tools, |ctx| Caches.apply(&go_entry(), ctx));
-    assert_eq!(out, Outcome::Skipped { reason: "go is not installed".into() });
+    let out = with_tools(tmp.path(), &config, &tools, |ctx| {
+        Caches.apply(&go_entry(), ctx)
+    });
+    assert_eq!(
+        out,
+        Outcome::Skipped {
+            reason: "go is not installed".into()
+        }
+    );
 }
 
 #[test]

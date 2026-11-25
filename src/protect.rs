@@ -43,9 +43,9 @@ impl Protector {
     /// True if `p` is inside a protected root, contains one (deleting `p`
     /// would delete it), or has a `vendored` or `.git` component.
     pub fn is_protected(&self, p: &Path) -> bool {
-        let bad_component = p.components().any(|c| {
-            matches!(c, Component::Normal(n) if PROTECTED_COMPONENTS.iter().any(|b| n == *b))
-        });
+        let bad_component = p.components().any(
+            |c| matches!(c, Component::Normal(n) if PROTECTED_COMPONENTS.iter().any(|b| n == *b)),
+        );
         bad_component
             || self
                 .roots

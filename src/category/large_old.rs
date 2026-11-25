@@ -47,13 +47,21 @@ impl Category for LargeOld {
             format!("disk index from {when}")
         });
         for root in crate::paths::expand_roots(&ctx.config.scan_roots, ctx.home) {
-            let Some((_, node)) = idx.node(&root) else { continue };
-            let mut v = Visit { ctx, cfg, stale: stale.as_deref(), out: &mut out };
+            let Some((_, node)) = idx.node(&root) else {
+                continue;
+            };
+            let mut v = Visit {
+                ctx,
+                cfg,
+                stale: stale.as_deref(),
+                out: &mut out,
+            };
             for c in &node.children {
                 v.node(&root.join(&c.name), c);
             }
         }
-        out.report_only.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.title.cmp(&b.title)));
+        out.report_only
+            .sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.title.cmp(&b.title)));
         Ok(out)
     }
 }
@@ -97,7 +105,12 @@ impl Visit<'_, '_> {
             id: String::new(),
             category: ID.into(),
             title: crate::paths::tilde(path, self.ctx.home),
-            kind: EntryKind::Item { targets: vec![Target { path: path.to_path_buf(), fp }] },
+            kind: EntryKind::Item {
+                targets: vec![Target {
+                    path: path.to_path_buf(),
+                    fp,
+                }],
+            },
             bytes: n.bytes,
             reason,
             selected: false,

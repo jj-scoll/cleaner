@@ -24,7 +24,11 @@ pub struct Fingerprint {
 pub fn fingerprint(path: &Path) -> std::io::Result<Fingerprint> {
     let md = std::fs::symlink_metadata(path)?;
     let m = measure(path, &mut InodeSet::default())?;
-    Ok(Fingerprint { dev: md.dev(), ino: md.ino(), newest_mtime: m.newest_mtime })
+    Ok(Fingerprint {
+        dev: md.dev(),
+        ino: md.ino(),
+        newest_mtime: m.newest_mtime,
+    })
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -39,7 +43,9 @@ pub enum EntryKind {
     /// Discrete: approval means exactly these paths.
     Item { targets: Vec<Target> },
     /// A rule over a store, re-evaluated at apply time (§5.1a).
-    StoreRule { rule: crate::category::store::StoreRule },
+    StoreRule {
+        rule: crate::category::store::StoreRule,
+    },
     /// Discrete things deleted by exact id through their owning tool.
     Object { obj: crate::object::Object },
     /// A tool command; the tool decides what goes (§5.1a).
@@ -69,7 +75,10 @@ impl Entry {
     /// Whether `bytes` is a plan-time estimate rather than an exact size:
     /// store rules, tool operations, and Nix closure sizes (DECISION D5).
     pub fn is_estimate(&self) -> bool {
-        matches!(self.kind, EntryKind::StoreRule { .. } | EntryKind::Operation { .. }) || self.is_closure_estimate()
+        matches!(
+            self.kind,
+            EntryKind::StoreRule { .. } | EntryKind::Operation { .. }
+        ) || self.is_closure_estimate()
     }
 
     /// A Nix row sized by store closure: generations, or a link that pins
@@ -77,8 +86,12 @@ impl Entry {
     pub fn is_closure_estimate(&self) -> bool {
         use crate::object::Object;
         match &self.kind {
-            EntryKind::Object { obj: Object::NixGenerations { .. } } => true,
-            EntryKind::Object { obj: Object::Symlink { .. } } => self.bytes > 0,
+            EntryKind::Object {
+                obj: Object::NixGenerations { .. },
+            } => true,
+            EntryKind::Object {
+                obj: Object::Symlink { .. },
+            } => self.bytes > 0,
             _ => false,
         }
     }
@@ -110,7 +123,11 @@ impl Plan {
     }
 
     pub fn selected_bytes(&self) -> u64 {
-        self.entries.iter().filter(|e| e.selected).map(|e| e.bytes).sum()
+        self.entries
+            .iter()
+            .filter(|e| e.selected)
+            .map(|e| e.bytes)
+            .sum()
     }
 
     /// Writes `<plans_dir>/<id>.json` (via a temp file and rename), then
@@ -180,7 +197,9 @@ pub enum Requested {
 }
 
 pub fn resolve_requested(plans_dir: &Path, id: Option<&str>) -> Requested {
-    let Some(id) = id else { return Requested::Latest };
+    let Some(id) = id else {
+        return Requested::Latest;
+    };
     let loaded = Plan::path_for(plans_dir, id).and_then(|path| Ok((Plan::load(&path)?, path)));
     match loaded {
         Ok((plan, path)) => Requested::Plan(path, plan),
@@ -191,8 +210,8 @@ pub fn resolve_requested(plans_dir: &Path, id: Option<&str>) -> Requested {
 /// `*.json` files in `plans_dir`, oldest first (ids sort chronologically).
 fn plan_files(plans_dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    let rd = std::fs::read_dir(plans_dir)
-        .with_context(|| format!("listing {}", plans_dir.display()))?;
+    let rd =
+        std::fs::read_dir(plans_dir).with_context(|| format!("listing {}", plans_dir.display()))?;
     for entry in rd {
         let entry = entry?;
         let name = entry.file_name();
@@ -230,7 +249,9 @@ pub mod path_codec {
     pub fn serialize<S: Serializer>(path: &Path, s: S) -> Result<S::Ok, S::Error> {
         match path.to_str() {
             Some(text) => Out::Str(text),
-            None => Out::Bytes { bytes: path.as_os_str().as_bytes() },
+            None => Out::Bytes {
+                bytes: path.as_os_str().as_bytes(),
+            },
         }
         .serialize(s)
     }

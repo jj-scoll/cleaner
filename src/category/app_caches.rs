@@ -33,12 +33,23 @@ impl Category for AppCaches {
         }
         for app in &cfg.apps {
             let running = app_running(app, ctx.home, &self.proc_root);
-            for root in app.dirs.iter().flat_map(|d| crate::paths::expand(d, ctx.home)) {
+            for root in app
+                .dirs
+                .iter()
+                .flat_map(|d| crate::paths::expand(d, ctx.home))
+            {
                 let note = running.then(|| {
-                    format!("{} is running now; will be skipped if still running when you clean", app.name)
+                    format!(
+                        "{} is running now; will be skipped if still running when you clean",
+                        app.name
+                    )
                 });
-                let main: Vec<String> =
-                    cfg.cache_dirs.iter().filter(|n| !OWN_ROW.iter().any(|(o, _)| o == n)).cloned().collect();
+                let main: Vec<String> = cfg
+                    .cache_dirs
+                    .iter()
+                    .filter(|n| !OWN_ROW.iter().any(|(o, _)| o == n))
+                    .cloned()
+                    .collect();
                 let mut rules = vec![(main, None)];
                 for (name, label) in OWN_ROW {
                     if cfg.cache_dirs.iter().any(|n| n == name) {
@@ -66,12 +77,19 @@ impl Category for AppCaches {
                     }
                     let (title, reason) = match label {
                         None => (
-                            format!("{}: {}", app.name, crate::paths::tilde(&rule.root, ctx.home)),
+                            format!(
+                                "{}: {}",
+                                app.name,
+                                crate::paths::tilde(&rule.root, ctx.home)
+                            ),
                             crate::fmt::plural(matches.len(), "cache dir"),
                         ),
                         Some(l) => (
                             format!("{} {l}", app.name),
-                            format!("re-downloads while {}'s on-device AI features are on", app.name),
+                            format!(
+                                "re-downloads while {}'s on-device AI features are on",
+                                app.name
+                            ),
                         ),
                     };
                     out.entries.push(Entry {
@@ -98,10 +116,14 @@ impl Category for AppCaches {
         };
         // Without its app we can't tell whether the cache is in use: fail safe.
         let Some(app) = owner(&ctx.config.app_caches.apps, &rule.root, ctx.home) else {
-            return Outcome::Skipped { reason: "no configured app owns this cache dir now".into() };
+            return Outcome::Skipped {
+                reason: "no configured app owns this cache dir now".into(),
+            };
         };
         if app_running(app, ctx.home, &self.proc_root) {
-            return Outcome::Skipped { reason: format!("{} is running", app.name) };
+            return Outcome::Skipped {
+                reason: format!("{} is running", app.name),
+            };
         }
         apply_rule(rule, ctx)
     }
@@ -109,6 +131,9 @@ impl Category for AppCaches {
 
 /// The app one of whose `dirs` expands to `root`.
 fn owner<'a>(apps: &'a [AppCfg], root: &Path, home: &Path) -> Option<&'a AppCfg> {
-    apps.iter()
-        .find(|a| a.dirs.iter().any(|d| crate::paths::expand(d, home).iter().any(|p| p == root)))
+    apps.iter().find(|a| {
+        a.dirs
+            .iter()
+            .any(|d| crate::paths::expand(d, home).iter().any(|p| p == root))
+    })
 }

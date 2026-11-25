@@ -3,8 +3,8 @@
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::Path;
 
@@ -208,7 +208,15 @@ pub fn default_stores() -> Vec<StoreCfg> {
         store("~/.cache/ms-playwright*", 90, "depth:1"),
         store("~/.cache/thumbnails", 90, "files-recursive"),
     ];
-    for name in ["vscode-cpptools", "nix", "appimage-run", "restic", "Cypress", "puppeteer", "nvidia"] {
+    for name in [
+        "vscode-cpptools",
+        "nix",
+        "appimage-run",
+        "restic",
+        "Cypress",
+        "puppeteer",
+        "nvidia",
+    ] {
         v.push(store(&format!("~/.cache/{name}"), 30, "depth:1"));
     }
     v
@@ -216,7 +224,12 @@ pub fn default_stores() -> Vec<StoreCfg> {
 
 fn app(name: &str, dirs: &[&str], locks: &[&str], exe: &[&str]) -> AppCfg {
     let v = |s: &[&str]| s.iter().map(|x| x.to_string()).collect();
-    AppCfg { name: name.into(), dirs: v(dirs), locks: v(locks), exe: v(exe) }
+    AppCfg {
+        name: name.into(),
+        dirs: v(dirs),
+        locks: v(locks),
+        exe: v(exe),
+    }
 }
 
 /// The browsers and Electron apps from spec §5.2d. Never put `claude` in an
@@ -235,17 +248,42 @@ pub fn default_apps() -> Vec<AppCfg> {
             &["~/.config/chromium/SingletonLock"],
             &["chromium", "chromium-browser"],
         ),
-        app("Firefox", &["~/.cache/mozilla"], &["~/.mozilla/firefox/*/lock"], &["firefox", "firefox-bin"]),
-        app("Slack", &["~/.config/Slack"], &["~/.config/Slack/SingletonLock"], &["slack"]),
+        app(
+            "Firefox",
+            &["~/.cache/mozilla"],
+            &["~/.mozilla/firefox/*/lock"],
+            &["firefox", "firefox-bin"],
+        ),
+        app(
+            "Slack",
+            &["~/.config/Slack"],
+            &["~/.config/Slack/SingletonLock"],
+            &["slack"],
+        ),
         app(
             "Teams",
             &["~/.config/teams-for-linux"],
             &["~/.config/teams-for-linux/SingletonLock"],
             &["teams-for-linux"],
         ),
-        app("Claude", &["~/.config/Claude"], &["~/.config/Claude/SingletonLock"], &["claude-desktop"]),
-        app("Cursor", &["~/.config/Cursor"], &["~/.config/Cursor/SingletonLock"], &["cursor"]),
-        app("Discord", &["~/.config/discord"], &["~/.config/discord/SingletonLock"], &["discord", "Discord"]),
+        app(
+            "Claude",
+            &["~/.config/Claude"],
+            &["~/.config/Claude/SingletonLock"],
+            &["claude-desktop"],
+        ),
+        app(
+            "Cursor",
+            &["~/.config/Cursor"],
+            &["~/.config/Cursor/SingletonLock"],
+            &["cursor"],
+        ),
+        app(
+            "Discord",
+            &["~/.config/discord"],
+            &["~/.config/discord/SingletonLock"],
+            &["discord", "Discord"],
+        ),
     ]
 }
 
@@ -274,13 +312,19 @@ impl Default for Config {
 
 impl Default for LowSpaceCfg {
     fn default() -> Self {
-        LowSpaceCfg { enabled: true, percent: 10, interval: "10min".into() }
+        LowSpaceCfg {
+            enabled: true,
+            percent: 10,
+            interval: "10min".into(),
+        }
     }
 }
 
 impl Default for DiskMapCfg {
     fn default() -> Self {
-        DiskMapCfg { roots: vec!["~".into()] }
+        DiskMapCfg {
+            roots: vec!["~".into()],
+        }
     }
 }
 
@@ -329,7 +373,12 @@ impl Default for IdleCfg {
 
 impl Default for WorktreesCfg {
     fn default() -> Self {
-        WorktreesCfg { enabled: true, roots: None, max_depth: 6, idle_days: 3 }
+        WorktreesCfg {
+            enabled: true,
+            roots: None,
+            max_depth: 6,
+            idle_days: 3,
+        }
     }
 }
 
@@ -337,9 +386,16 @@ impl Default for AppCachesCfg {
     fn default() -> Self {
         AppCachesCfg {
             enabled: true,
-            cache_dirs: ["Cache", "Code Cache", "GPUCache", "CacheStorage", "OptGuideOnDeviceModel", "cache2"]
-                .map(String::from)
-                .into(),
+            cache_dirs: [
+                "Cache",
+                "Code Cache",
+                "GPUCache",
+                "CacheStorage",
+                "OptGuideOnDeviceModel",
+                "cache2",
+            ]
+            .map(String::from)
+            .into(),
             apps: default_apps(),
         }
     }
@@ -347,7 +403,11 @@ impl Default for AppCachesCfg {
 
 impl Default for DockerCfg {
     fn default() -> Self {
-        DockerCfg { enabled: true, container_days: 7, build_cache_days: 7 }
+        DockerCfg {
+            enabled: true,
+            container_days: 7,
+            build_cache_days: 7,
+        }
     }
 }
 
@@ -396,8 +456,14 @@ pub fn write_default_if_missing(path: &Path) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(ctx)?;
     }
-    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
-        Ok(mut f) => f.write_all(DEFAULT_CONFIG_TOML.as_bytes()).with_context(ctx),
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(mut f) => f
+            .write_all(DEFAULT_CONFIG_TOML.as_bytes())
+            .with_context(ctx),
         Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e).with_context(ctx),
     }

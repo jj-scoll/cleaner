@@ -10,13 +10,17 @@ use crate::fmt::plural;
 use crate::protect::BUILTIN_PROTECTED;
 use crate::settings::validate;
 
-pub const READ_ONLY_COPY: &str = "config.toml is read-only (managed elsewhere); settings are view-only";
+pub const READ_ONLY_COPY: &str =
+    "config.toml is read-only (managed elsewhere); settings are view-only";
 
 const GIB: f64 = (1u64 << 30) as f64;
 const MIB: f64 = (1u64 << 20) as f64;
 
 fn group(title: &str, description: Option<&str>) -> adw::PreferencesGroup {
-    adw::PreferencesGroup::builder().title(title).description(description.unwrap_or_default()).build()
+    adw::PreferencesGroup::builder()
+        .title(title)
+        .description(description.unwrap_or_default())
+        .build()
 }
 
 fn spin(title: &str, min: f64, max: f64, step: f64, digits: u32, value: f64) -> adw::SpinRow {
@@ -28,7 +32,10 @@ fn spin(title: &str, min: f64, max: f64, step: f64, digits: u32, value: f64) -> 
 }
 
 fn switch(title: &str, active: bool) -> adw::SwitchRow {
-    adw::SwitchRow::builder().title(title).active(active).build()
+    adw::SwitchRow::builder()
+        .title(title)
+        .active(active)
+        .build()
 }
 
 fn entry(title: &str, text: &str) -> adw::EntryRow {
@@ -56,12 +63,21 @@ struct Scaled {
 impl Scaled {
     fn new(row: adw::SpinRow, bytes: u64, unit: f64) -> Scaled {
         row.set_value(bytes as f64 / unit);
-        Scaled { shown: row.value(), row, bytes, unit }
+        Scaled {
+            shown: row.value(),
+            row,
+            bytes,
+            unit,
+        }
     }
 
     fn bytes(&self) -> u64 {
         let v = self.row.value();
-        if v == self.shown { self.bytes } else { (v * self.unit).round() as u64 }
+        if v == self.shown {
+            self.bytes
+        } else {
+            (v * self.unit).round() as u64
+        }
     }
 }
 
@@ -74,7 +90,10 @@ struct StrList {
 impl StrList {
     fn new(group: &adw::PreferencesGroup, add_title: &str, items: &[String]) -> StrList {
         let rows: Rc<RefCell<Vec<adw::ActionRow>>> = Rc::default();
-        let add = adw::EntryRow::builder().title(add_title).show_apply_button(true).build();
+        let add = adw::EntryRow::builder()
+            .title(add_title)
+            .show_apply_button(true)
+            .build();
         for s in items {
             Self::push(&rows, group, s);
         }
@@ -99,7 +118,10 @@ impl StrList {
     }
 
     fn push(rows: &Rc<RefCell<Vec<adw::ActionRow>>>, group: &adw::PreferencesGroup, text: &str) {
-        let row = adw::ActionRow::builder().title(text).use_markup(false).build();
+        let row = adw::ActionRow::builder()
+            .title(text)
+            .use_markup(false)
+            .build();
         let remove = remove_button();
         remove.connect_clicked(glib::clone!(
             #[weak]
@@ -119,7 +141,11 @@ impl StrList {
     }
 
     fn values(&self) -> Vec<String> {
-        self.rows.borrow().iter().map(|r| r.title().to_string()).collect()
+        self.rows
+            .borrow()
+            .iter()
+            .map(|r| r.title().to_string())
+            .collect()
     }
 }
 
@@ -135,11 +161,35 @@ struct RuleRow {
 
 impl RuleRow {
     fn new(r: &StoreCfg) -> RuleRow {
-        let expander = adw::ExpanderRow::builder().title(&r.path).use_markup(false).build();
+        let expander = adw::ExpanderRow::builder()
+            .title(&r.path)
+            .use_markup(false)
+            .build();
         let path = entry("Path", &r.path);
-        let days = spin("Older than (days)", 1.0, 36500.0, 1.0, 0, r.max_age_days as f64);
-        let glob = entry("File pattern (optional, e.g. *.iso)", r.glob.as_deref().unwrap_or_default());
-        let min = Scaled::new(spin("Minimum size (MiB, 0 = any)", 0.0, 1_048_576.0, 10.0, 0, 0.0), r.min_bytes.unwrap_or(0), MIB);
+        let days = spin(
+            "Older than (days)",
+            1.0,
+            36500.0,
+            1.0,
+            0,
+            r.max_age_days as f64,
+        );
+        let glob = entry(
+            "File pattern (optional, e.g. *.iso)",
+            r.glob.as_deref().unwrap_or_default(),
+        );
+        let min = Scaled::new(
+            spin(
+                "Minimum size (MiB, 0 = any)",
+                0.0,
+                1_048_576.0,
+                10.0,
+                0,
+                0.0,
+            ),
+            r.min_bytes.unwrap_or(0),
+            MIB,
+        );
         path.connect_changed(glib::clone!(
             #[weak]
             expander,
@@ -149,7 +199,14 @@ impl RuleRow {
         expander.add_row(&days);
         expander.add_row(&glob);
         expander.add_row(&min.row);
-        RuleRow { expander, base: r.clone(), path, days, glob, min }
+        RuleRow {
+            expander,
+            base: r.clone(),
+            path,
+            days,
+            glob,
+            min,
+        }
     }
 
     fn config(&self) -> StoreCfg {
@@ -160,7 +217,11 @@ impl RuleRow {
             max_age_days: self.days.value().round() as u64,
             unit: self.base.unit.clone(),
             glob: (!glob.is_empty()).then_some(glob),
-            min_bytes: if min == self.base.min_bytes.unwrap_or(0) { self.base.min_bytes } else { (min > 0).then_some(min) },
+            min_bytes: if min == self.base.min_bytes.unwrap_or(0) {
+                self.base.min_bytes
+            } else {
+                (min > 0).then_some(min)
+            },
         }
     }
 }
@@ -247,7 +308,11 @@ impl Inner {
             self.errors.remove(&r);
         }
         for e in errors {
-            let row = adw::ActionRow::builder().title(e).use_markup(false).css_classes(["error"]).build();
+            let row = adw::ActionRow::builder()
+                .title(e)
+                .use_markup(false)
+                .css_classes(["error"])
+                .build();
             self.errors.add(&row);
             self.error_rows.borrow_mut().push(row);
         }
@@ -269,19 +334,31 @@ impl SettingsPage {
     pub fn timers_managed_by_nix(&self) {
         self.inner.time.set_sensitive(false);
         self.inner.low_enabled.set_sensitive(false);
-        self.inner.low_enabled.set_subtitle("The nightly time and low-space check are set in Nix (services.cleaner).");
+        self.inner.low_enabled.set_subtitle(
+            "The nightly time and low-space check are set in Nix (services.cleaner).",
+        );
     }
 
     /// One group per section; a read-only config shows a banner, greys out
     /// every row and hides Save.
     pub fn new(config: &Config, read_only: bool) -> SettingsPage {
         let prefs = adw::PreferencesPage::new();
-        let errors = adw::PreferencesGroup::builder().title("Can't save").visible(false).build();
+        let errors = adw::PreferencesGroup::builder()
+            .title("Can't save")
+            .visible(false)
+            .build();
         prefs.add(&errors);
 
         let general = group("General", None);
         let threshold = Scaled::new(
-            spin("Notify when a plan can free (GiB)", 0.0, 1024.0, 0.5, 1, 0.0),
+            spin(
+                "Notify when a plan can free (GiB)",
+                0.0,
+                1024.0,
+                0.5,
+                1,
+                0.0,
+            ),
             config.notify_threshold_bytes,
             GIB,
         );
@@ -291,13 +368,23 @@ impl SettingsPage {
         let filesystems = StrList::new(&general, "Add a filesystem to show", &config.filesystems);
         let roots = StrList::new(&general, "Add a scan root", &config.scan_roots);
         let low_enabled = switch("Warn when disk space is low", config.low_space.enabled);
-        let low_percent = spin("Warn when free space is below (%)", 1.0, 50.0, 1.0, 0, config.low_space.percent as f64);
+        let low_percent = spin(
+            "Warn when free space is below (%)",
+            1.0,
+            50.0,
+            1.0,
+            0,
+            config.low_space.percent as f64,
+        );
         general.add(&low_enabled);
         general.add(&low_percent);
         let overrides = config.root_overrides();
         if !overrides.is_empty() {
             let note = gtk::Label::builder()
-                .label(format!("Overridden in config.toml for: {}", overrides.join(", ")))
+                .label(format!(
+                    "Overridden in config.toml for: {}",
+                    overrides.join(", ")
+                ))
                 .halign(gtk::Align::Start)
                 .wrap(true)
                 .css_classes(["dim-label"])
@@ -305,9 +392,16 @@ impl SettingsPage {
             general.add(&note);
         }
 
-        let protected = group("Protected paths", Some("Never cleaned, even when a rule matches."));
+        let protected = group(
+            "Protected paths",
+            Some("Never cleaned, even when a rule matches."),
+        );
         for p in BUILTIN_PROTECTED {
-            let row = adw::ActionRow::builder().title(*p).subtitle("built-in").use_markup(false).build();
+            let row = adw::ActionRow::builder()
+                .title(*p)
+                .subtitle("built-in")
+                .use_markup(false)
+                .build();
             row.add_prefix(&gtk::Image::from_icon_name("changes-prevent-symbolic"));
             protected.add(&row);
         }
@@ -317,14 +411,24 @@ impl SettingsPage {
         let artifacts = group("Project artifacts", None);
         let artifacts_enabled = switch("Enabled", a.enabled);
         let max_depth = spin("Search depth", 1.0, 64.0, 1.0, 0, a.max_depth as f64);
-        let stale = spin("Stale after (days)", 0.0, 36500.0, 1.0, 0, a.stale_after_days as f64);
+        let stale = spin(
+            "Stale after (days)",
+            0.0,
+            36500.0,
+            1.0,
+            0,
+            a.stale_after_days as f64,
+        );
         artifacts.add(&artifacts_enabled);
         artifacts.add(&max_depth);
         artifacts.add(&stale);
 
         let caches = group(
             "Tool caches",
-            Some(&format!("{}; edit config.toml to change them.", plural(config.caches.stores.len(), "cache store"))),
+            Some(&format!(
+                "{}; edit config.toml to change them.",
+                plural(config.caches.stores.len(), "cache store")
+            )),
         );
         let caches_enabled = switch("Enabled", config.caches.enabled);
         let uv_prune = switch("Offer uv cache prune", config.caches.uv_prune);
@@ -335,14 +439,24 @@ impl SettingsPage {
             .keep_newest
             .iter()
             .map(|k| {
-                let s = spin(&format!("Keep newest in {}", k.path), 0.0, 1000.0, 1.0, 0, k.keep as f64);
+                let s = spin(
+                    &format!("Keep newest in {}", k.path),
+                    0.0,
+                    1000.0,
+                    1.0,
+                    0,
+                    k.keep as f64,
+                );
                 caches.add(&s);
                 s
             })
             .collect();
 
         let w = &config.worktrees;
-        let worktrees = group("Finished worktrees", Some("Linked git worktrees whose branch is merged."));
+        let worktrees = group(
+            "Finished worktrees",
+            Some("Linked git worktrees whose branch is merged."),
+        );
         let worktrees_enabled = switch("Enabled", w.enabled);
         let worktrees_idle = spin("Idle for (days)", 0.0, 36500.0, 1.0, 0, w.idle_days as f64);
         worktrees.add(&worktrees_enabled);
@@ -361,46 +475,84 @@ impl SettingsPage {
         let d = &config.docker;
         let docker = group("Docker", None);
         let docker_enabled = switch("Enabled", d.enabled);
-        let container_days = spin("Stopped containers older than (days)", 1.0, 36500.0, 1.0, 0, d.container_days as f64);
-        let build_cache_days = spin("Build cache unused for (days)", 1.0, 36500.0, 1.0, 0, d.build_cache_days as f64);
+        let container_days = spin(
+            "Stopped containers older than (days)",
+            1.0,
+            36500.0,
+            1.0,
+            0,
+            d.container_days as f64,
+        );
+        let build_cache_days = spin(
+            "Build cache unused for (days)",
+            1.0,
+            36500.0,
+            1.0,
+            0,
+            d.build_cache_days as f64,
+        );
         docker.add(&docker_enabled);
         docker.add(&container_days);
         docker.add(&build_cache_days);
 
         let n = &config.nix;
-        let nix = group("Nix", Some("System generations always ask for your password."));
+        let nix = group(
+            "Nix",
+            Some("System generations always ask for your password."),
+        );
         let nix_enabled = switch("Enabled", n.enabled);
-        let nix_keep = spin("Generations to keep per profile", 0.0, 1000.0, 1.0, 0, n.keep as f64);
-        let devbox_idle = spin("Devbox roots idle for (days)", 0.0, 36500.0, 1.0, 0, n.devbox_idle_days as f64);
+        let nix_keep = spin(
+            "Generations to keep per profile",
+            0.0,
+            1000.0,
+            1.0,
+            0,
+            n.keep as f64,
+        );
+        let devbox_idle = spin(
+            "Devbox roots idle for (days)",
+            0.0,
+            36500.0,
+            1.0,
+            0,
+            n.devbox_idle_days as f64,
+        );
         let nix_gc = switch("Offer store garbage collection", n.gc);
         nix.add(&nix_enabled);
         nix.add(&nix_keep);
         nix.add(&devbox_idle);
         nix.add(&nix_gc);
 
-        let rules_group = group("Folder rules", Some("Files older than the given age in these folders."));
+        let rules_group = group(
+            "Folder rules",
+            Some("Files older than the given age in these folders."),
+        );
         let rules: Rc<RefCell<Vec<RuleRow>>> = Rc::default();
-        let add_rule = adw::EntryRow::builder().title("Add a folder rule (path)").show_apply_button(true).build();
-        let push_rule = |rules: &Rc<RefCell<Vec<RuleRow>>>, group: &adw::PreferencesGroup, r: &StoreCfg| {
-            let rule = RuleRow::new(r);
-            let remove = remove_button();
-            let expander = rule.expander.clone();
-            remove.connect_clicked(glib::clone!(
-                #[weak]
-                rules,
-                #[weak]
-                group,
-                #[weak]
-                expander,
-                move |_| {
-                    group.remove(&expander);
-                    rules.borrow_mut().retain(|r| r.expander != expander);
-                }
-            ));
-            expander.add_suffix(&remove);
-            group.add(&expander);
-            rules.borrow_mut().push(rule);
-        };
+        let add_rule = adw::EntryRow::builder()
+            .title("Add a folder rule (path)")
+            .show_apply_button(true)
+            .build();
+        let push_rule =
+            |rules: &Rc<RefCell<Vec<RuleRow>>>, group: &adw::PreferencesGroup, r: &StoreCfg| {
+                let rule = RuleRow::new(r);
+                let remove = remove_button();
+                let expander = rule.expander.clone();
+                remove.connect_clicked(glib::clone!(
+                    #[weak]
+                    rules,
+                    #[weak]
+                    group,
+                    #[weak]
+                    expander,
+                    move |_| {
+                        group.remove(&expander);
+                        rules.borrow_mut().retain(|r| r.expander != expander);
+                    }
+                ));
+                expander.add_suffix(&remove);
+                group.add(&expander);
+                rules.borrow_mut().push(rule);
+            };
         for r in &config.user_rules {
             push_rule(&rules, &rules_group, r);
         }
@@ -416,7 +568,13 @@ impl SettingsPage {
                     return;
                 }
                 rules_group.remove(add);
-                let r = StoreCfg { path, max_age_days: 90, unit: "files".into(), glob: None, min_bytes: None };
+                let r = StoreCfg {
+                    path,
+                    max_age_days: 90,
+                    unit: "files".into(),
+                    glob: None,
+                    min_bytes: None,
+                };
                 push_rule(&rules, &rules_group, &r);
                 rules_group.add(add);
                 add.set_text("");
@@ -425,34 +583,81 @@ impl SettingsPage {
 
         let trash = group("Trash", None);
         let trash_enabled = switch("Enabled", config.trash.enabled);
-        let trash_days = spin("Trashed more than (days) ago", 0.0, 36500.0, 1.0, 0, config.trash.max_age_days as f64);
+        let trash_days = spin(
+            "Trashed more than (days) ago",
+            0.0,
+            36500.0,
+            1.0,
+            0,
+            config.trash.max_age_days as f64,
+        );
         trash.add(&trash_enabled);
         trash.add(&trash_days);
 
         let i = &config.idle_folders;
-        let idle = group("Large and old", Some("Reported only; never selected for deletion."));
+        let idle = group(
+            "Large and old",
+            Some("Reported only; never selected for deletion."),
+        );
         let idle_enabled = switch("Enabled", i.enabled);
-        let idle_days = spin("Untouched for (days)", 0.0, 36500.0, 1.0, 0, i.idle_days as f64);
-        let idle_min = Scaled::new(spin("At least (MiB)", 0.0, 1_048_576.0, 50.0, 0, 0.0), i.min_bytes, MIB);
+        let idle_days = spin(
+            "Untouched for (days)",
+            0.0,
+            36500.0,
+            1.0,
+            0,
+            i.idle_days as f64,
+        );
+        let idle_min = Scaled::new(
+            spin("At least (MiB)", 0.0, 1_048_576.0, 50.0, 0, 0.0),
+            i.min_bytes,
+            MIB,
+        );
         idle.add(&idle_enabled);
         idle.add(&idle_days);
         idle.add(&idle_min.row);
 
-        for g in [&general, &protected, &artifacts, &caches, &worktrees, &app_caches, &docker, &nix, &rules_group, &trash, &idle] {
+        for g in [
+            &general,
+            &protected,
+            &artifacts,
+            &caches,
+            &worktrees,
+            &app_caches,
+            &docker,
+            &nix,
+            &rules_group,
+            &trash,
+            &idle,
+        ] {
             prefs.add(g);
             g.set_sensitive(!read_only);
         }
 
-        let save = gtk::Button::builder().label("Save").css_classes(["suggested-action"]).visible(!read_only).build();
+        let save = gtk::Button::builder()
+            .label("Save")
+            .css_classes(["suggested-action"])
+            .visible(!read_only)
+            .build();
         let header = adw::HeaderBar::new();
         header.pack_end(&save);
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);
         if read_only {
-            toolbar.add_top_bar(&adw::Banner::builder().title(READ_ONLY_COPY).use_markup(false).revealed(true).build());
+            toolbar.add_top_bar(
+                &adw::Banner::builder()
+                    .title(READ_ONLY_COPY)
+                    .use_markup(false)
+                    .revealed(true)
+                    .build(),
+            );
         }
         toolbar.set_content(Some(&prefs));
-        let page = adw::NavigationPage::builder().title("Settings").tag("settings").child(&toolbar).build();
+        let page = adw::NavigationPage::builder()
+            .title("Settings")
+            .tag("settings")
+            .child(&toolbar)
+            .build();
 
         let inner = Rc::new(Inner {
             base: config.clone(),

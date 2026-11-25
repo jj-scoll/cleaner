@@ -46,7 +46,12 @@ pub trait Runner: Send + Sync {
     fn run(&self, program: &str, args: &[&OsStr], timeout: Duration) -> Result<CmdOut, ToolError>;
     /// Like `run`, for a program that may prompt the user (pkexec's text
     /// agent, spec §5.2f).
-    fn run_interactive(&self, program: &str, args: &[&OsStr], timeout: Duration) -> Result<CmdOut, ToolError> {
+    fn run_interactive(
+        &self,
+        program: &str,
+        args: &[&OsStr],
+        timeout: Duration,
+    ) -> Result<CmdOut, ToolError> {
         self.run(program, args, timeout)
     }
 }
@@ -59,7 +64,8 @@ pub struct SystemRunner;
 /// that has one.
 fn resolve(program: &str) -> Option<PathBuf> {
     let executable = |p: &Path| {
-        p.metadata().is_ok_and(|m| m.is_file()) && rustix::fs::access(p, rustix::fs::Access::EXEC_OK).is_ok()
+        p.metadata().is_ok_and(|m| m.is_file())
+            && rustix::fs::access(p, rustix::fs::Access::EXEC_OK).is_ok()
     };
     if program.contains('/') {
         let p = PathBuf::from(program);
@@ -90,20 +96,32 @@ impl Runner for SystemRunner {
     /// When stdin is a tty (the CLI), the child stays in our foreground
     /// process group with stdin and stderr inherited, so pkexec's text agent
     /// can prompt and Ctrl-C reaches it. Otherwise (GUI, timer) it is `run`.
-    fn run_interactive(&self, program: &str, args: &[&OsStr], timeout: Duration) -> Result<CmdOut, ToolError> {
+    fn run_interactive(
+        &self,
+        program: &str,
+        args: &[&OsStr],
+        timeout: Duration,
+    ) -> Result<CmdOut, ToolError> {
         use std::io::IsTerminal;
         run_child(program, args, timeout, std::io::stdin().is_terminal())
     }
 }
 
-fn run_child(program: &str, args: &[&OsStr], timeout: Duration, interactive: bool) -> Result<CmdOut, ToolError> {
+fn run_child(
+    program: &str,
+    args: &[&OsStr],
+    timeout: Duration,
+    interactive: bool,
+) -> Result<CmdOut, ToolError> {
     let path = resolve(program).ok_or_else(|| ToolError::Missing(program.into()))?;
     let mut cmd = Command::new(&path);
     cmd.args(args).env("LC_ALL", "C").stdout(Stdio::piped());
     if interactive {
         cmd.stdin(Stdio::inherit()).stderr(Stdio::inherit());
     } else {
-        cmd.stdin(Stdio::null()).stderr(Stdio::piped()).process_group(0);
+        cmd.stdin(Stdio::null())
+            .stderr(Stdio::piped())
+            .process_group(0);
     }
     let mut child = cmd.spawn().map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => ToolError::Missing(program.into()),
@@ -118,8 +136,11 @@ fn run_child(program: &str, args: &[&OsStr], timeout: Duration, interactive: boo
             Ok(None) if Instant::now() >= deadline => {
                 // The whole group: a shell's own children die with it.
                 // (An interactive child shares our group: only it is killed.)
-                if !interactive && let Some(pgid) = rustix::process::Pid::from_raw(child.id() as i32) {
-                    let _ = rustix::process::kill_process_group(pgid, rustix::process::Signal::KILL);
+                if !interactive
+                    && let Some(pgid) = rustix::process::Pid::from_raw(child.id() as i32)
+                {
+                    let _ =
+                        rustix::process::kill_process_group(pgid, rustix::process::Signal::KILL);
                 }
                 let _ = child.kill();
                 // Not a hard bound: once pkexec has exec'd its program as

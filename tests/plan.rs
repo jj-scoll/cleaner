@@ -20,7 +20,11 @@ fn item(path: PathBuf, bytes: u64, selected: bool) -> Entry {
         kind: EntryKind::Item {
             targets: vec![Target {
                 path,
-                fp: Fingerprint { dev: 1, ino: 2, newest_mtime: 3 },
+                fp: Fingerprint {
+                    dev: 1,
+                    ino: 2,
+                    newest_mtime: 3,
+                },
             }],
         },
         bytes,
@@ -50,12 +54,23 @@ fn with_ctx<R>(home: &Path, f: impl FnOnce(&ScanCtx) -> R) -> R {
     let config = Config::default();
     let protector = Protector::new(home, &[]);
     let tools = common::FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config: &config, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config: &config,
+        protector: &protector,
+        tools: &tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     f(&ctx)
 }
 
 fn target_for(path: &Path) -> Target {
-    Target { path: path.to_path_buf(), fp: fingerprint(path).unwrap() }
+    Target {
+        path: path.to_path_buf(),
+        fp: fingerprint(path).unwrap(),
+    }
 }
 
 #[test]
@@ -79,7 +94,9 @@ fn non_utf8_path_roundtrips() {
     assert!(json.contains("\"bytes\""), "{json}");
     let loaded = Plan::load(&saved).unwrap();
     assert_eq!(loaded, plan);
-    let EntryKind::Item { targets } = &loaded.entries[0].kind else { panic!("not an item") };
+    let EntryKind::Item { targets } = &loaded.entries[0].kind else {
+        panic!("not an item")
+    };
     assert_eq!(targets[0].path, odd);
 }
 
@@ -88,7 +105,9 @@ fn prune_keeps_ten() {
     let tmp = tempfile::tempdir().unwrap();
     let plans = tmp.path().join("plans");
     for i in 0..12 {
-        plan_with(&format!("202611{:02}T030000Z", i + 1), vec![]).save(&plans).unwrap();
+        plan_with(&format!("202611{:02}T030000Z", i + 1), vec![])
+            .save(&plans)
+            .unwrap();
     }
     let mut names: Vec<String> = std::fs::read_dir(&plans)
         .unwrap()
@@ -130,7 +149,9 @@ fn requested_plan_missing_or_corrupt() {
     let tmp = tempfile::tempdir().unwrap();
     let plans = tmp.path().join("plans");
     let id = "20261110T030000Z";
-    plan_with(id, vec![item("/x/target".into(), 42, true)]).save(&plans).unwrap();
+    plan_with(id, vec![item("/x/target".into(), 42, true)])
+        .save(&plans)
+        .unwrap();
 
     assert!(matches!(resolve_requested(&plans, None), Requested::Latest));
     match resolve_requested(&plans, Some(id)) {
@@ -225,7 +246,10 @@ fn apply_targets_reports_delete_error() {
 }
 
 fn kind_entry(kind: EntryKind) -> Entry {
-    Entry { kind, ..item("/x".into(), 1, true) }
+    Entry {
+        kind,
+        ..item("/x".into(), 1, true)
+    }
 }
 
 #[test]
@@ -233,7 +257,11 @@ fn object_and_operation_roundtrip() {
     use cleaner::object::{DockerKind, DockerRef, Object, Operation, WorktreeRef};
     let tmp = tempfile::tempdir().unwrap();
     let plans = tmp.path().join("plans");
-    let fp = Fingerprint { dev: 1, ino: 2, newest_mtime: 3 };
+    let fp = Fingerprint {
+        dev: 1,
+        ino: 2,
+        newest_mtime: 3,
+    };
     let objects = vec![
         Object::Worktree(WorktreeRef {
             path: "/h/src/app-feat".into(),
@@ -245,10 +273,17 @@ fn object_and_operation_roundtrip() {
             ino: 8,
             ignored: vec![".env".into()],
         }),
-        Object::OrphanWorktree { path: "/h/src/gone".into(), fp: fp.clone() },
+        Object::OrphanWorktree {
+            path: "/h/src/gone".into(),
+            fp: fp.clone(),
+        },
         Object::Docker {
             refs: vec![
-                DockerRef { kind: DockerKind::Volume, id: "v1".into(), created: None },
+                DockerRef {
+                    kind: DockerKind::Volume,
+                    id: "v1".into(),
+                    created: None,
+                },
                 DockerRef {
                     kind: DockerKind::Container,
                     id: "c1".into(),
@@ -258,7 +293,10 @@ fn object_and_operation_roundtrip() {
         },
         Object::NixGenerations {
             profile: "/nix/var/nix/profiles/system".into(),
-            gens: vec![(41, "/nix/store/abc-system".into()), (42, "/nix/store/def-system".into())],
+            gens: vec![
+                (41, "/nix/store/abc-system".into()),
+                (42, "/nix/store/def-system".into()),
+            ],
             root: true,
         },
         Object::Symlink {
@@ -275,7 +313,10 @@ fn object_and_operation_roundtrip() {
     let entries = objects
         .into_iter()
         .map(|obj| kind_entry(EntryKind::Object { obj }))
-        .chain(ops.into_iter().map(|op| kind_entry(EntryKind::Operation { op })))
+        .chain(
+            ops.into_iter()
+                .map(|op| kind_entry(EntryKind::Operation { op })),
+        )
         .collect();
     let plan = plan_with("20261110T030000Z", entries);
     let saved = plan.save(&plans).unwrap();
@@ -288,7 +329,9 @@ fn go_operation_roundtrip() {
     let tmp = tempfile::tempdir().unwrap();
     let plan = plan_with(
         "20261110T030000Z",
-        vec![kind_entry(EntryKind::Operation { op: Operation::GoCleanModcache })],
+        vec![kind_entry(EntryKind::Operation {
+            op: Operation::GoCleanModcache,
+        })],
     );
     let saved = plan.save(tmp.path()).unwrap();
     assert_eq!(Plan::load(&saved).unwrap(), plan);
@@ -306,13 +349,31 @@ fn estimate_kinds() {
         min_bytes: None,
     };
     assert!(kind_entry(EntryKind::StoreRule { rule }).is_estimate());
-    assert!(kind_entry(EntryKind::Operation { op: Operation::UvCachePrune }).is_estimate());
+    assert!(
+        kind_entry(EntryKind::Operation {
+            op: Operation::UvCachePrune
+        })
+        .is_estimate()
+    );
     assert!(!item("/x".into(), 1, true).is_estimate());
     // D5: closure sizes are estimates; a dangling link (0 bytes) is exact.
-    let obj = Object::Symlink { path: "/h/result".into(), target: "/nix/store/x".into() };
+    let obj = Object::Symlink {
+        path: "/h/result".into(),
+        target: "/nix/store/x".into(),
+    };
     assert!(kind_entry(EntryKind::Object { obj: obj.clone() }).is_estimate());
-    assert!(!Entry { bytes: 0, ..kind_entry(EntryKind::Object { obj }) }.is_estimate());
-    let gens = Object::NixGenerations { profile: "/p/system".into(), gens: vec![(1, "/nix/store/x".into())], root: true };
+    assert!(
+        !Entry {
+            bytes: 0,
+            ..kind_entry(EntryKind::Object { obj })
+        }
+        .is_estimate()
+    );
+    let gens = Object::NixGenerations {
+        profile: "/p/system".into(),
+        gens: vec![(1, "/nix/store/x".into())],
+        root: true,
+    };
     assert!(kind_entry(EntryKind::Object { obj: gens }).is_estimate());
     let docker = Object::Docker { refs: vec![] };
     assert!(!kind_entry(EntryKind::Object { obj: docker }).is_estimate());
@@ -323,7 +384,9 @@ fn apply_default_refuses_new_kinds() {
     use cleaner::category::apply_default;
     use cleaner::object::Operation;
     let home = tempfile::tempdir().unwrap();
-    let e = kind_entry(EntryKind::Operation { op: Operation::UvCachePrune });
+    let e = kind_entry(EntryKind::Operation {
+        op: Operation::UvCachePrune,
+    });
     match with_ctx(home.path(), |ctx| apply_default(&e, ctx)) {
         Outcome::Skipped { reason } => assert!(reason.contains("can't apply"), "{reason}"),
         other => panic!("expected Skipped, got {other:?}"),

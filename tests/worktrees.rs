@@ -74,7 +74,11 @@ impl Fx {
         git_init(&repo);
         mkfile(&repo.join("README"), 10);
         git_commit_all(&repo);
-        Fx { _tmp: tmp, home, repo }
+        Fx {
+            _tmp: tmp,
+            home,
+            repo,
+        }
     }
 
     fn wt(&self, name: &str) -> PathBuf {
@@ -84,7 +88,10 @@ impl Fx {
     /// `git worktree add home/wt/<name> -b <name>`.
     fn add(&self, name: &str) -> PathBuf {
         let wt = self.wt(name);
-        git(&self.repo, &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", name]);
+        git(
+            &self.repo,
+            &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", name],
+        );
         wt
     }
 
@@ -102,7 +109,9 @@ impl Fx {
     }
 
     fn scan_with(&self, cfg: Config) -> ScanOutput {
-        with_ctx(&self.home, cfg, |ctx| Worktrees.scan(ctx, &mut InodeSet::default()).unwrap())
+        with_ctx(&self.home, cfg, |ctx| {
+            Worktrees.scan(ctx, &mut InodeSet::default()).unwrap()
+        })
     }
 
     fn scan(&self) -> ScanOutput {
@@ -117,17 +126,36 @@ impl Fx {
 fn with_ctx<R>(home: &Path, cfg: Config, f: impl FnOnce(&ScanCtx) -> R) -> R {
     let protector = Protector::new(home, &cfg.protect);
     let tools = common::FakeRunner::new();
-    let ctx = ScanCtx { home, now: now(), config: &cfg, protector: &protector, tools: &tools, euid: common::my_uid(), usage: None };
+    let ctx = ScanCtx {
+        home,
+        now: now(),
+        config: &cfg,
+        protector: &protector,
+        tools: &tools,
+        euid: common::my_uid(),
+        usage: None,
+    };
     f(&ctx)
 }
 
 fn only_entry(out: &ScanOutput) -> &Entry {
-    assert_eq!(out.entries.len(), 1, "entries: {:?}\nskipped: {:?}", out.entries, out.skipped);
+    assert_eq!(
+        out.entries.len(),
+        1,
+        "entries: {:?}\nskipped: {:?}",
+        out.entries,
+        out.skipped
+    );
     &out.entries[0]
 }
 
 fn is_worktree(e: &Entry) -> bool {
-    matches!(&e.kind, EntryKind::Object { obj: Object::Worktree(_) })
+    matches!(
+        &e.kind,
+        EntryKind::Object {
+            obj: Object::Worktree(_)
+        }
+    )
 }
 
 // ---- scan ----
@@ -144,7 +172,11 @@ fn merged_clean_idle_is_selected() {
     assert_eq!(e.category, "worktrees");
     assert_eq!(e.title, "wt/m");
     assert!(e.selected, "{e:?}");
-    assert!(e.reason.starts_with("branch m merged into main"), "{}", e.reason);
+    assert!(
+        e.reason.starts_with("branch m merged into main"),
+        "{}",
+        e.reason
+    );
     assert!(e.reason.contains("idle 10 days"), "{}", e.reason);
     assert_eq!(e.note, None);
     assert!(e.bytes > 0);
@@ -225,7 +257,10 @@ fn ignored_files_block_preselect() {
     let e = fx.scan();
     let e = only_entry(&e);
     assert!(!e.selected, "{e:?}");
-    assert_eq!(e.note.as_deref(), Some("has ignored files outside build dirs: .env"));
+    assert_eq!(
+        e.note.as_deref(),
+        Some("has ignored files outside build dirs: .env")
+    );
 }
 
 #[test]
@@ -254,7 +289,10 @@ fn upstream_gone_counts() {
     let remote = fx.home.join("remote.git");
     std::fs::create_dir_all(&remote).unwrap();
     git(&remote, &["init", "-q", "--bare", "-b", "main"]);
-    git(&fx.repo, &["remote", "add", "origin", remote.to_str().unwrap()]);
+    git(
+        &fx.repo,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
     git(&fx.repo, &["push", "-q", "origin", "main"]);
     let wt = fx.add("g");
     mkfile(&wt.join("g.txt"), 100);
@@ -266,7 +304,11 @@ fn upstream_gone_counts() {
 
     let e = fx.scan();
     let e = only_entry(&e);
-    assert!(e.reason.starts_with("upstream branch g is gone"), "{}", e.reason);
+    assert!(
+        e.reason.starts_with("upstream branch g is gone"),
+        "{}",
+        e.reason
+    );
     assert!(e.selected, "{e:?}");
 }
 
@@ -274,12 +316,26 @@ fn upstream_gone_counts() {
 fn detached_at_default_commit_counts() {
     let fx = Fx::new();
     let wt = fx.wt("det");
-    git(&fx.repo, &["worktree", "add", "-q", "--detach", wt.to_str().unwrap(), "main"]);
+    git(
+        &fx.repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            wt.to_str().unwrap(),
+            "main",
+        ],
+    );
     fx.age(10);
 
     let e = fx.scan();
     let e = only_entry(&e);
-    assert!(e.reason.starts_with("detached at a commit in main"), "{}", e.reason);
+    assert!(
+        e.reason.starts_with("detached at a commit in main"),
+        "{}",
+        e.reason
+    );
 }
 
 #[test]
@@ -302,7 +358,10 @@ fn protected_worktree_never_listed() {
     fx.merged("p");
     fx.age(10);
 
-    let cfg = Config { protect: vec!["~/wt".into()], ..Default::default() };
+    let cfg = Config {
+        protect: vec!["~/wt".into()],
+        ..Default::default()
+    };
     let out = fx.scan_with(cfg);
     assert!(out.entries.is_empty(), "{:?}", out.entries);
     assert!(out.skipped.is_empty(), "{:?}", out.skipped);
@@ -330,7 +389,9 @@ fn orphan_listed_unselected() {
     let out = fx.scan();
     let e = only_entry(&out);
     match &e.kind {
-        EntryKind::Object { obj: Object::OrphanWorktree { path, .. } } => assert_eq!(path, &wt),
+        EntryKind::Object {
+            obj: Object::OrphanWorktree { path, .. },
+        } => assert_eq!(path, &wt),
         other => panic!("expected OrphanWorktree, got {other:?}"),
     }
     assert!(!e.selected);
@@ -485,7 +546,9 @@ fn in_mount_ns(test: &str, body: impl FnOnce()) {
     if std::env::var_os(NS_DIR_ENV).is_some() {
         return body();
     }
-    let probe = Command::new("unshare").args(["--user", "--map-root-user", "--mount", "true"]).status();
+    let probe = Command::new("unshare")
+        .args(["--user", "--map-root-user", "--mount", "true"])
+        .status();
     if !probe.is_ok_and(|s| s.success()) {
         eprintln!("skipping {test}: user+mount namespaces unavailable");
         return;
@@ -499,16 +562,36 @@ fn in_mount_ns(test: &str, body: impl FnOnce()) {
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(out.status.success(), "{test} failed in namespace:\n{stdout}\n{stderr}");
-    assert!(stdout.contains("1 passed"), "{test} did not run in namespace:\n{stdout}\n{stderr}");
+    assert!(
+        out.status.success(),
+        "{test} failed in namespace:\n{stdout}\n{stderr}"
+    );
+    assert!(
+        stdout.contains("1 passed"),
+        "{test} did not run in namespace:\n{stdout}\n{stderr}"
+    );
 }
 
 fn mount_tmpfs(dir: &Path) {
     use std::os::unix::ffi::OsStrExt;
     let c = |s: &[u8]| std::ffi::CString::new(s).unwrap();
     let (src, target) = (c(b"tmpfs"), c(dir.as_os_str().as_bytes()));
-    let rc = unsafe { libc::mount(src.as_ptr(), target.as_ptr(), src.as_ptr(), 0, std::ptr::null()) };
-    assert_eq!(rc, 0, "mount tmpfs at {}: {}", dir.display(), std::io::Error::last_os_error());
+    let rc = unsafe {
+        libc::mount(
+            src.as_ptr(),
+            target.as_ptr(),
+            src.as_ptr(),
+            0,
+            std::ptr::null(),
+        )
+    };
+    assert_eq!(
+        rc,
+        0,
+        "mount tmpfs at {}: {}",
+        dir.display(),
+        std::io::Error::last_os_error()
+    );
 }
 
 #[test]
@@ -574,7 +657,10 @@ fn trunk_worktree_is_never_finished() {
     let fx = Fx::new();
     git(&fx.repo, &["checkout", "-q", "--detach"]);
     let wt = fx.wt("trunk");
-    git(&fx.repo, &["worktree", "add", "-q", wt.to_str().unwrap(), "main"]);
+    git(
+        &fx.repo,
+        &["worktree", "add", "-q", wt.to_str().unwrap(), "main"],
+    );
     fx.age(10);
 
     let out = fx.scan();
@@ -588,12 +674,18 @@ fn trunk_worktree_with_origin_default_is_never_finished() {
     let remote = fx.home.join("remote.git");
     std::fs::create_dir_all(&remote).unwrap();
     git(&remote, &["init", "-q", "--bare", "-b", "main"]);
-    git(&fx.repo, &["remote", "add", "origin", remote.to_str().unwrap()]);
+    git(
+        &fx.repo,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
     git(&fx.repo, &["push", "-q", "-u", "origin", "main"]);
     git(&fx.repo, &["remote", "set-head", "origin", "main"]);
     git(&fx.repo, &["checkout", "-q", "--detach"]);
     let wt = fx.wt("trunk");
-    git(&fx.repo, &["worktree", "add", "-q", wt.to_str().unwrap(), "main"]);
+    git(
+        &fx.repo,
+        &["worktree", "add", "-q", wt.to_str().unwrap(), "main"],
+    );
     fx.age(10);
 
     let out = fx.scan();
@@ -612,8 +704,16 @@ fn nested_repo_in_ignored_dir_is_skipped() {
     fx.age(10);
 
     let out = fx.scan();
-    assert!(out.entries.iter().all(|e| !e.title.starts_with("wt/nest")), "{:?}", out.entries);
-    let s: Vec<_> = out.skipped.iter().filter(|s| s.title == "wt/nest").collect();
+    assert!(
+        out.entries.iter().all(|e| !e.title.starts_with("wt/nest")),
+        "{:?}",
+        out.entries
+    );
+    let s: Vec<_> = out
+        .skipped
+        .iter()
+        .filter(|s| s.title == "wt/nest")
+        .collect();
     assert_eq!(s.len(), 1, "{:?}", out.skipped);
     assert_eq!(s[0].reason, "contains a nested git repo");
 }
@@ -634,7 +734,11 @@ fn plan4_artifact_names_do_not_widen_ignored_guard() {
         let out = fx.scan();
         let e = only_entry(&out);
         assert!(!e.selected, "{dir}: {e:?}");
-        assert_eq!(e.note.as_deref(), Some(format!("has ignored files outside build dirs: {dir}/").as_str()), "{dir}");
+        assert_eq!(
+            e.note.as_deref(),
+            Some(format!("has ignored files outside build dirs: {dir}/").as_str()),
+            "{dir}"
+        );
     }
 }
 
@@ -663,7 +767,10 @@ fn apply_skips_nested_repo_created_since_plan() {
     fx.age(10);
     let out = fx.scan();
     let e = only_entry(&out);
-    assert_eq!(e.note.as_deref(), Some("has ignored files outside build dirs: .claude/"));
+    assert_eq!(
+        e.note.as_deref(),
+        Some("has ignored files outside build dirs: .claude/")
+    );
 
     // The user ticks it; then an empty repo appears (its files are all under .git).
     git_init(&wt.join(".claude/sub"));
@@ -681,10 +788,17 @@ fn orphan_with_missing_main_repo_says_so() {
 
     let out = fx.scan();
     let e = only_entry(&out);
-    assert!(matches!(&e.kind, EntryKind::Object { obj: Object::OrphanWorktree { path, .. } } if path == &wt), "{e:?}");
+    assert!(
+        matches!(&e.kind, EntryKind::Object { obj: Object::OrphanWorktree { path, .. } } if path == &wt),
+        "{e:?}"
+    );
     assert!(!e.selected);
     let repo = fx.repo.display();
-    assert!(e.reason.starts_with(&format!("main repo {repo} not found")), "{}", e.reason);
+    assert!(
+        e.reason.starts_with(&format!("main repo {repo} not found")),
+        "{}",
+        e.reason
+    );
     assert_eq!(
         e.note.as_deref(),
         Some(format!("main repo {repo} not found; it can't check for uncommitted work").as_str())
@@ -693,24 +807,27 @@ fn orphan_with_missing_main_repo_says_so() {
 
 #[test]
 fn scan_does_not_search_artifact_dirs_for_mounts_but_apply_does() {
-    in_mount_ns("scan_does_not_search_artifact_dirs_for_mounts_but_apply_does", || {
-        let fx = Fx::new();
-        mkfile(&fx.repo.join("package.json"), 2);
-        std::fs::write(fx.repo.join(".gitignore"), "node_modules/\n").unwrap();
-        git_commit_all(&fx.repo);
-        let wt = fx.merged("nm");
-        std::fs::create_dir_all(wt.join("node_modules/pkg/mnt")).unwrap();
-        mount_tmpfs(&wt.join("node_modules/pkg/mnt"));
-        mkfile(&wt.join("node_modules/pkg/mnt/precious"), 10);
-        fx.age(10);
+    in_mount_ns(
+        "scan_does_not_search_artifact_dirs_for_mounts_but_apply_does",
+        || {
+            let fx = Fx::new();
+            mkfile(&fx.repo.join("package.json"), 2);
+            std::fs::write(fx.repo.join(".gitignore"), "node_modules/\n").unwrap();
+            git_commit_all(&fx.repo);
+            let wt = fx.merged("nm");
+            std::fs::create_dir_all(wt.join("node_modules/pkg/mnt")).unwrap();
+            mount_tmpfs(&wt.join("node_modules/pkg/mnt"));
+            mkfile(&wt.join("node_modules/pkg/mnt/precious"), 10);
+            fx.age(10);
 
-        // The scan prunes artifact dirs (M10 scan cost)...
-        let out = fx.scan();
-        let e = only_entry(&out);
-        // ...but apply, the last check before git deletes, walks everything.
-        assert_skipped(fx.apply(e), "contains a mount point");
-        assert!(wt.join("node_modules/pkg/mnt/precious").exists());
-    });
+            // The scan prunes artifact dirs (M10 scan cost)...
+            let out = fx.scan();
+            let e = only_entry(&out);
+            // ...but apply, the last check before git deletes, walks everything.
+            assert_skipped(fx.apply(e), "contains a mount point");
+            assert!(wt.join("node_modules/pkg/mnt/precious").exists());
+        },
+    );
 }
 
 #[test]

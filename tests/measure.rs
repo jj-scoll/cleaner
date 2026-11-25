@@ -45,7 +45,11 @@ fn measure_newest_mtime() {
     set_age(&root, 40);
     let m = measure(&root, &mut InodeSet::default()).unwrap();
     let want = now() - 5 * 86_400;
-    assert!((m.newest_mtime - want).abs() <= 2, "{} vs {want}", m.newest_mtime);
+    assert!(
+        (m.newest_mtime - want).abs() <= 2,
+        "{} vs {want}",
+        m.newest_mtime
+    );
 }
 
 #[test]
