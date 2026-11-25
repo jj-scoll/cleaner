@@ -17,14 +17,26 @@ use tempfile::TempDir;
 
 /// Writes an executable `systemctl` into `dir` that appends its arguments
 /// to `log`.
+///
+/// A `cp` child creates the script, so this process never holds a write fd
+/// on it. Otherwise another test thread can fork while the fd is open, and
+/// until that child execs, running the script fails with ETXTBSY ("Text
+/// file busy"). Renaming wouldn't help: it keeps the inode.
 fn fake_systemctl(dir: &Path, log: &Path) {
     std::fs::create_dir_all(dir).unwrap();
-    let script = dir.join("systemctl");
+    let source = dir.join("systemctl.src");
     std::fs::write(
-        &script,
+        &source,
         format!("#!/bin/sh\necho \"$@\" >> '{}'\n", log.display()),
     )
     .unwrap();
+    let script = dir.join("systemctl");
+    let status = std::process::Command::new("cp")
+        .arg(&source)
+        .arg(&script)
+        .status()
+        .unwrap();
+    assert!(status.success(), "cp {source:?} {script:?}: {status}");
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
