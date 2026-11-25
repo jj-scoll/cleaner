@@ -57,7 +57,7 @@ Existing tools each cover one slice: kondo does build artifacts, nh does Nix, au
 
 Docker and Nix deletions are permanent and are marked as such in the review screen.
 
-**AI models** are never pre-selected: file dates show when a model was downloaded, not when it was last used. Ollama blobs shared with another model are always kept. `HF_HUB_CACHE`, `HF_HOME` and `OLLAMA_MODELS` are honoured when set.
+**AI models** are never pre-selected: file dates show when a model was downloaded, not when it was last used. Ollama blobs shared with another model are always kept. `HF_HUB_CACHE`, `HF_HOME` and `OLLAMA_MODELS` are honoured when set. The systemd timer doesn't see variables set only in your shell, so to have timer runs use them, set them in `~/.config/environment.d/*.conf` (read by the user systemd instance).
 
 **Toolchains** go through their own tool where there is one: `rustup toolchain uninstall`, `flatpak uninstall --user` and `conda clean --packages --tarballs` (only the tarballs when conda itself is gone). What a tool still uses is checked again at apply time, and each tool is skipped if it isn't installed.
 
