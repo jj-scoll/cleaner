@@ -15,6 +15,39 @@ pub const GC_TIMEOUT: Duration = Duration::from_secs(1800);
 /// the root child can't be killed, so the run can outlast it (see `run_child`).
 pub const PKEXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
+type TerminalHook = std::sync::Arc<dyn Fn(bool) + Send + Sync>;
+
+static TERMINAL_HOOK: std::sync::Mutex<Option<TerminalHook>> = std::sync::Mutex::new(None);
+
+/// Sets (or clears) the hook told when an interactive child takes over the
+/// terminal (`true`) and gives it back (`false`). The CLI uses it to finish
+/// its progress line so a pkexec prompt isn't drawn over.
+pub fn set_terminal_hook(hook: Option<Box<dyn Fn(bool) + Send + Sync>>) {
+    *TERMINAL_HOOK.lock().unwrap_or_else(|e| e.into_inner()) = hook.map(TerminalHook::from);
+}
+
+/// Runs `f` with the terminal handed to a child: the hook, if any, is
+/// called with `true` before and `false` after (also on early return).
+pub fn hand_terminal<T>(f: impl FnOnce() -> T) -> T {
+    struct Resume(Option<TerminalHook>);
+    impl Drop for Resume {
+        fn drop(&mut self) {
+            if let Some(h) = &self.0 {
+                h(false);
+            }
+        }
+    }
+    let hook = TERMINAL_HOOK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let Some(h) = &hook {
+        h(true);
+    }
+    let _resume = Resume(hook);
+    f()
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CmdOut {
     /// `None` if the process was killed by a signal.
@@ -108,6 +141,19 @@ impl Runner for SystemRunner {
 }
 
 fn run_child(
+    program: &str,
+    args: &[&OsStr],
+    timeout: Duration,
+    interactive: bool,
+) -> Result<CmdOut, ToolError> {
+    if interactive {
+        hand_terminal(|| spawn_and_wait(program, args, timeout, true))
+    } else {
+        spawn_and_wait(program, args, timeout, false)
+    }
+}
+
+fn spawn_and_wait(
     program: &str,
     args: &[&OsStr],
     timeout: Duration,

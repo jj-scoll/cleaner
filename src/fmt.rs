@@ -35,3 +35,13 @@ pub fn human_bytes(n: u64) -> String {
     }
     format!("{v:.1} {}", UNITS[i])
 }
+
+/// A run time: "4s", "1m12s", "1h03m".
+pub fn elapsed(d: std::time::Duration) -> String {
+    let s = d.as_secs();
+    match s {
+        0..60 => format!("{s}s"),
+        60..3600 => format!("{}m{:02}s", s / 60, s % 60),
+        _ => format!("{}h{:02}m", s / 3600, s % 3600 / 60),
+    }
+}

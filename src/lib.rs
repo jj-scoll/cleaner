@@ -16,6 +16,7 @@ pub mod object;
 pub mod paths;
 pub mod plan;
 pub mod procs;
+pub mod progress;
 pub mod protect;
 pub mod settings;
 pub mod space;

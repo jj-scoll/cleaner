@@ -4,6 +4,13 @@ Notable changes to cleaner. The release workflow publishes the section whose
 heading matches the tag (`## v0.2.0 …`) as that release's notes, so add an
 entry here before tagging.
 
+## Unreleased
+
+### Added
+- `cleaner apply` and `cleaner review` show each item as it is applied on
+  stderr, with a live elapsed time in a terminal, so a long step such as Nix
+  garbage collection no longer looks stuck.
+
 ## v0.3.1 - 2026-11-25
 
 ### Added

@@ -168,30 +168,62 @@ fn run_interactive_without_tty_is_plain_run() {
     );
 }
 
-/// Run under a pty (e.g. `script -qec 'cargo test --test tool run_interactive_on_a_tty' /dev/null`);
-/// returns early otherwise.
+/// The terminal hand-off, in one test because the hook is process-global
+/// and every `run_interactive` on a tty fires it. The tty half needs a pty
+/// (e.g. `script -qec 'cargo test --test tool terminal_hand_off' /dev/null`)
+/// and is skipped otherwise.
 #[test]
-fn run_interactive_on_a_tty_shares_stdin_and_process_group() {
+fn terminal_hand_off() {
+    use cleaner::tool::{hand_terminal, set_terminal_hook};
     use std::io::IsTerminal;
-    if !std::io::stdin().is_terminal() {
-        eprintln!("skipping: stdin is not a tty");
-        return;
+    use std::sync::{Arc, Mutex};
+    let log: Arc<Mutex<Vec<&str>>> = Arc::default();
+    let hook_log = log.clone();
+    set_terminal_hook(Some(Box::new(move |busy| {
+        hook_log
+            .lock()
+            .unwrap()
+            .push(if busy { "pause" } else { "resume" })
+    })));
+    let r = hand_terminal(|| {
+        log.lock().unwrap().push("child");
+        7
+    });
+    assert_eq!(r, 7);
+    assert_eq!(*log.lock().unwrap(), ["pause", "child", "resume"]);
+
+    if std::io::stdin().is_terminal() {
+        // The child shares our stdin and foreground process group, and
+        // run_interactive calls the hook around it.
+        log.lock().unwrap().clear();
+        let pgrp = |stat: &str| stat.split(' ').nth(4).unwrap().trim().to_string();
+        let ours = pgrp(&std::fs::read_to_string("/proc/self/stat").unwrap());
+        let out = SystemRunner
+            .run_interactive(
+                "sh",
+                &args(&["-c", "test -t 0 && echo tty; cat /proc/$$/stat"]),
+                Duration::from_secs(10),
+            )
+            .unwrap();
+        let mut lines = out.stdout.lines();
+        assert_eq!(lines.next(), Some("tty"), "{out:?}");
+        assert_eq!(
+            pgrp(lines.next().unwrap()),
+            ours,
+            "child not in our (foreground) process group"
+        );
+        assert_eq!(*log.lock().unwrap(), ["pause", "resume"]);
+        println!("tty path checked");
+    } else {
+        eprintln!("skipping tty half: stdin is not a tty");
     }
-    let pgrp = |stat: &str| stat.split(' ').nth(4).unwrap().trim().to_string();
-    let ours = pgrp(&std::fs::read_to_string("/proc/self/stat").unwrap());
-    let out = SystemRunner
-        .run_interactive(
-            "sh",
-            &args(&["-c", "test -t 0 && echo tty; cat /proc/$$/stat"]),
-            Duration::from_secs(10),
-        )
-        .unwrap();
-    let mut lines = out.stdout.lines();
-    assert_eq!(lines.next(), Some("tty"), "{out:?}");
+
+    let calls = log.lock().unwrap().len();
+    set_terminal_hook(None);
+    assert_eq!(hand_terminal(|| 3), 3);
     assert_eq!(
-        pgrp(lines.next().unwrap()),
-        ours,
-        "child not in our (foreground) process group"
+        log.lock().unwrap().len(),
+        calls,
+        "no hook after clearing it"
     );
-    println!("tty path checked");
 }

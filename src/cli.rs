@@ -453,7 +453,7 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
     }
 
     let ids: Vec<String> = chosen.iter().map(|e| e.id.clone()).collect();
-    let report = apply_selected(&paths, &config, &plan, &ids, &mut |_| {})?;
+    let report = apply_with_progress(&paths, &config, &plan, &ids)?;
     print_report(&plan, &report);
     Ok(0)
 }
@@ -484,9 +484,76 @@ fn cmd_review(id: Option<String>) -> anyhow::Result<i32> {
     };
     println!("Plan {} (created {})", plan.id, local_time(plan.created));
     cleaner::sys::lower_priority();
-    let report = apply_selected(&paths, &config, &plan, &ids, &mut |_| {})?;
+    let report = apply_with_progress(&paths, &config, &plan, &ids)?;
     print_report(&plan, &report);
     Ok(0)
+}
+
+/// `apply_selected` with progress on stderr (`cleaner::progress`): on a
+/// terminal a ticker thread redraws the running entry every second, and the
+/// line is ended while an interactive child (pkexec) has the terminal.
+fn apply_with_progress(
+    paths: &Paths,
+    config: &Config,
+    plan: &Plan,
+    ids: &[String],
+) -> anyhow::Result<cleaner::engine::RunReport> {
+    use cleaner::progress::ApplyProgress;
+    use std::io::IsTerminal;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    let tty = std::io::stderr().is_terminal();
+    let width = tty
+        .then(|| ratatui::crossterm::terminal::size().ok())
+        .flatten()
+        .map(|(w, _)| w as usize);
+    // Locks below ignore poisoning: a progress line must never stop an apply.
+    let shown = Arc::new(Mutex::new(ApplyProgress::new(
+        std::io::stderr(),
+        tty,
+        width,
+    )));
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let ticker = tty.then(|| {
+        let (shown, stop) = (shown.clone(), stop.clone());
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                std::thread::park_timeout(Duration::from_secs(1));
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                shown
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .tick(Instant::now());
+            }
+        })
+    });
+    if tty {
+        let shown = shown.clone();
+        cleaner::tool::set_terminal_hook(Some(Box::new(move |busy| {
+            let mut p = shown.lock().unwrap_or_else(|e| e.into_inner());
+            if busy { p.pause() } else { p.resume() }
+        })));
+    }
+
+    let result = apply_selected(paths, config, plan, ids, &mut |p| {
+        shown
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .event(&p, Instant::now());
+    });
+
+    cleaner::tool::set_terminal_hook(None);
+    stop.store(true, Ordering::Relaxed);
+    if let Some(t) = ticker {
+        t.thread().unpark();
+        let _ = t.join();
+    }
+    result
 }
 
 /// Each entry's outcome, then the free space each filesystem gained.

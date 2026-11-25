@@ -322,6 +322,7 @@ fn cli_apply_explicit_id_needs_no_show() {
 
 #[test]
 fn cli_respects_run_lock() {
+    use predicates::prelude::PredicateBooleanExt;
     let env = Env::new();
     env.plan_and_show();
     let _held = cleaner::lock::acquire(&env.tmp.path().join("run/cleaner.lock")).unwrap();
@@ -332,9 +333,28 @@ fn cli_respects_run_lock() {
     env.cmd(&["apply", "--yes"])
         .assert()
         .code(1)
-        .stderr(contains("another cleaner run is in progress"));
+        .stderr(contains("another cleaner run is in progress"))
+        .stderr(contains("[1/").not());
     assert!(env.artifact().exists());
     assert!(env.cache_file().exists());
+}
+
+#[test]
+fn cli_apply_shows_progress_on_stderr() {
+    let env = Env::new();
+    env.plan_and_show();
+    let out = env.cmd(&["apply", "--yes"]).output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let lines: Vec<&str> = stderr.lines().filter(|l| l.starts_with('[')).collect();
+    assert!(!lines.is_empty(), "no progress lines: {stderr:?}");
+    assert!(lines[0].starts_with("[1/"), "{stderr:?}");
+    assert!(
+        !stderr.contains('\x1b'),
+        "escape codes on a pipe: {stderr:?}"
+    );
+    assert!(!stdout.contains("[1/"), "progress on stdout: {stdout:?}");
 }
 
 #[test]
