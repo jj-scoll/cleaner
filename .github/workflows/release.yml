@@ -59,9 +59,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes cleaner-*
+      # The release notes are this tag's section of CHANGELOG.md; GitHub's
+      # generated "Full Changelog" link is appended after it.
+      - name: Notes from CHANGELOG.md
+        run: |
+          awk -v tag="$GITHUB_REF_NAME" '
+            index($0, "## " tag " ") == 1 || $0 == "## " tag { on = 1; next }
+            on && /^## / { exit }
+            on' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no '## $GITHUB_REF_NAME' section"
+            exit 1
+          fi
+      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md --generate-notes cleaner-*
         env:
           GH_TOKEN: ${{ github.token }}
