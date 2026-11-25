@@ -168,14 +168,14 @@ fn env_vars_must_be_absolute() {
 }
 
 #[test]
-fn registered_after_app_caches_and_disable_able() {
+fn registered_after_ai_models_and_disable_able() {
     let ids = |c: &Config| -> Vec<&'static str> { registry(c).iter().map(|c| c.id()).collect() };
     let all = ids(&Config::default());
     let at = all
         .iter()
         .position(|id| *id == "toolchains")
         .expect("registered");
-    assert_eq!(all[at - 1], "app_caches");
+    assert_eq!(all[at - 1], "ai_models", "app_caches, ide_versions, ai_models, toolchains");
     let mut c = Config::default();
     c.toolchains.enabled = false;
     assert!(!ids(&c).contains(&"toolchains"));
