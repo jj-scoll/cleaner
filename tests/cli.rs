@@ -792,6 +792,19 @@ fn cli_apply_prompt_says_what_is_held() {
 }
 
 #[test]
+fn cli_review_confirmation_says_what_is_held() {
+    let env = Env::new();
+    env.enable_hold();
+    env.plan();
+    // Enter opens the confirmation, n goes back, q leaves: nothing applied.
+    let (code, out) = run_in_pty(&env, &["review"], "sort:", b"\rnq");
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("holding"), "no hold text in:\n{out}");
+    assert!(!out.contains("undone"), "{out}");
+    assert!(env.artifact().exists());
+}
+
+#[test]
 fn cli_hold_list_restore_purge() {
     let env = Env::new();
     env.cmd(&["hold", "list"])

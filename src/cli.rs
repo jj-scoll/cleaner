@@ -475,6 +475,11 @@ fn cmd_review(id: Option<String>) -> anyhow::Result<i32> {
     Plan::mark_shown(&paths.state_dir, &plan.id)?;
     let mut model = ReviewModel::new(plan.clone());
     model.set_sort(Sort::load(&paths.state_dir));
+    model.set_hold(cleaner::hold::preview(
+        &plan,
+        &paths.hold_dir,
+        &config.hold,
+    ));
     let mut app = cleaner::tui::App::new(model);
     // Leaving without deleting exits 1, like answering no to `cleaner apply`.
     let Some(ids) = cleaner::tui::run(&mut app, &paths.state_dir)? else {
