@@ -52,6 +52,7 @@ impl Fixture {
             tools: &tools,
             euid: common::my_uid(),
             usage: None,
+            hold: None,
         };
         f(&ctx)
     }

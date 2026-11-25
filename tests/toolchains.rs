@@ -49,6 +49,7 @@ impl Fx {
             tools,
             euid: common::my_uid(),
             usage: None,
+            hold: None,
         };
         // A fresh category per call, as the engine builds one per run.
         f(&ctx, &Toolchains::new(self.env.clone()))
@@ -412,6 +413,7 @@ fn caches_leaves_rustup_dirs_to_this_category() {
             tools: &tools,
             euid: common::my_uid(),
             usage: None,
+            hold: None,
         };
         Caches
             .scan(&ctx, &mut InodeSet::default())

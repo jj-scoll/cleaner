@@ -258,7 +258,8 @@ fn entry_paths(e: &Entry) -> Vec<&Path> {
                 vec![path.as_path()]
             }
             Object::NixGenerations { profile, .. } => vec![profile.as_path()],
-            Object::Docker { .. } => Vec::new(),
+            Object::RustupToolchain { path, .. } => vec![path.as_path()],
+            Object::Docker { .. } | Object::Flatpak { .. } => Vec::new(),
         },
         EntryKind::Operation { .. } => Vec::new(),
     }
@@ -369,6 +370,10 @@ fn rule_for(entry: &Entry, report_only: bool, ctx: &ScanCtx) -> String {
                 format!("Nix generations beyond the newest {}", cfg.nix.keep)
             }
             Object::Docker { .. } => "unused Docker object".into(),
+            Object::RustupToolchain { .. } => {
+                "rustup toolchain other than the default, newest stable and pinned ones".into()
+            }
+            Object::Flatpak { .. } => "Flatpak runtime no installed app uses".into(),
         },
         (EntryKind::Operation { .. }, _) => "tool operation".into(),
         _ => entry.category.clone(),

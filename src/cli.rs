@@ -548,7 +548,7 @@ fn cmd_explain(path: &std::path::Path, id: Option<String>, json: bool) -> anyhow
             None => None,
         },
     };
-    let protector = cleaner::protect::Protector::new(&paths.home, &config.protect);
+    let protector = cleaner::engine::protector_for(&paths, &config);
     let ctx = cleaner::category::ScanCtx {
         home: &paths.home,
         now: now(),
@@ -557,6 +557,7 @@ fn cmd_explain(path: &std::path::Path, id: Option<String>, json: bool) -> anyhow
         tools: &cleaner::tool::SystemRunner,
         euid: rustix::process::geteuid().as_raw(),
         usage: None,
+        hold: None,
     };
     let e = explain(path, plan.as_ref(), &ctx);
     if json {
