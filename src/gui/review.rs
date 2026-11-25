@@ -127,20 +127,21 @@ fn load_top_matches(row: &adw::ExpanderRow, rule: StoreRule) {
                 euid: rustix::process::geteuid().as_raw(),
                 usage: None,
             };
-            Ok((now, top_matches(&rule, &ctx, 20)))
+            let matches = top_matches(&rule, &ctx, 20);
+            Ok((now, paths.home, matches))
         },
         |_| {},
         move |result| {
             row.remove(&placeholder);
             match result {
-                Ok((_, matches)) if matches.is_empty() => {
+                Ok((_, _, matches)) if matches.is_empty() => {
                     row.add_row(&adw::ActionRow::builder().title("Nothing matches the rule now").build());
                 }
-                Ok((now, matches)) => {
+                Ok((now, home, matches)) => {
                     for m in matches {
                         let days = (now - m.newest_mtime).max(0) / 86_400;
                         let child = adw::ActionRow::builder()
-                            .title(m.path.display().to_string())
+                            .title(crate::paths::tilde(&m.path, &home))
                             .subtitle(format!("{} old", plural(days, "day")))
                             .use_markup(false)
                             .build();

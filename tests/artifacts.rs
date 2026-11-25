@@ -139,7 +139,7 @@ fn tracked_node_modules_skipped() {
     let out = scan(h);
     assert!(out.entries.is_empty(), "{:?}", out.entries);
     assert!(
-        out.skipped.iter().any(|s| s.reason.contains("tracked in git")),
+        out.skipped.iter().any(|s| s.title == "~/p/node_modules" && s.reason.contains("tracked in git")),
         "{:?}",
         out.skipped
     );

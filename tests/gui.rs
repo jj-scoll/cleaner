@@ -6,6 +6,7 @@ use cleaner::disk::FsUsage;
 use cleaner::engine::Progress;
 use cleaner::gui::dashboard::DashboardPage;
 use cleaner::gui::history::HistoryPage;
+use cleaner::category::store::{StoreRule, Unit};
 use cleaner::config::Config;
 use cleaner::gui::review::ReviewPage;
 use cleaner::gui::settings::SettingsPage;
@@ -140,6 +141,75 @@ fn review_marks_skipped_and_permanent() {
     let t = texts(&page.page());
     assert_has(&t, "⊘ locked");
     assert_has(&t, "permanent");
+}
+
+/// Sets the mtime of `path` and everything under it to `days` ago.
+fn age_tree(path: &std::path::Path, days: u64) {
+    if path.is_dir() {
+        for e in std::fs::read_dir(path).unwrap() {
+            age_tree(&e.unwrap().path(), days);
+        }
+    }
+    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 86_400);
+    std::fs::File::open(path).unwrap().set_modified(t).unwrap();
+}
+
+/// Expanding a store row lists its matches under `~`, like the row title;
+/// the plan keeps the absolute root it deletes under.
+fn review_store_children_under_tilde() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let root = home.join(".cache/s");
+    std::fs::create_dir_all(root.join("a")).unwrap();
+    std::fs::write(root.join("a/f"), vec![b'x'; 1000]).unwrap();
+    age_tree(&root, 40);
+    let rule = StoreRule { root: root.clone(), max_age_days: 30, unit: Unit::Depth(1), glob: None, min_bytes: None };
+    let p = plan(vec![Entry {
+        title: "~/.cache/s".into(),
+        kind: EntryKind::StoreRule { rule },
+        ..entry("caches:0", "caches", 1000, true)
+    }]);
+    let m = model(p);
+    // The row loads its matches with `Paths::from_env`.
+    let saved: Vec<_> = ["HOME", "XDG_CONFIG_HOME"].iter().map(|v| (*v, std::env::var_os(v))).collect();
+    unsafe {
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+    let page = ReviewPage::new(m.clone(), None);
+    let row = expander_rows(page.page().upcast_ref()).pop().expect("a store row");
+    row.set_expanded(true);
+    let ctx = gtk::glib::MainContext::default();
+    let start = std::time::Instant::now();
+    while has(&texts(&page.page()), "Loading…") && start.elapsed() < std::time::Duration::from_secs(10) {
+        ctx.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    for (v, val) in saved {
+        match val {
+            Some(val) => unsafe { std::env::set_var(v, val) },
+            None => unsafe { std::env::remove_var(v) },
+        }
+    }
+    let t = texts(&page.page());
+    assert_has(&t, "~/.cache/s/a");
+    assert!(!has(&t, &root.join("a").display().to_string()), "absolute child path shown: {t:#?}");
+    let json = serde_json::to_value(m.borrow().plan()).unwrap();
+    assert_eq!(json["entries"][0]["kind"]["StoreRule"]["rule"]["root"], root.to_str().unwrap());
+}
+
+/// Every ExpanderRow under `w`, depth-first.
+fn expander_rows(w: &gtk::Widget) -> Vec<adw::ExpanderRow> {
+    let mut out = Vec::new();
+    if let Some(r) = w.downcast_ref::<adw::ExpanderRow>() {
+        out.push(r.clone());
+    }
+    let mut child = w.first_child();
+    while let Some(c) = child {
+        out.extend(expander_rows(&c));
+        child = c.next_sibling();
+    }
+    out
 }
 
 fn review_filter_shows_one_group() {
@@ -467,6 +537,7 @@ fn main() {
         ("busy_shows_progress", busy_shows_progress),
         ("review_toggle_updates_clean_button", review_toggle_updates_clean_button),
         ("review_marks_skipped_and_permanent", review_marks_skipped_and_permanent),
+        ("review_store_children_under_tilde", review_store_children_under_tilde),
         ("review_filter_shows_one_group", review_filter_shows_one_group),
         ("review_sort_picker_reorders_rows", review_sort_picker_reorders_rows),
         ("history_lists_runs", history_lists_runs),

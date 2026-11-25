@@ -56,7 +56,7 @@ impl Category for AppCaches {
                         min_bytes: None,
                     };
                     let found = evaluate_as(&rule, ctx.now, ctx.protector, seen, ctx.euid);
-                    if !skipped && let Some(s) = foreign_skip(ID, &rule, &found) {
+                    if !skipped && let Some(s) = foreign_skip(ID, &rule, &found, ctx.home) {
                         out.skipped.push(s);
                         skipped = true;
                     }

@@ -157,8 +157,8 @@ fn children(dir: &Path) -> Vec<Child> {
         .collect()
 }
 
-fn skip(path: &Path, reason: &str) -> Skip {
-    Skip { category: ID.into(), title: path.display().to_string(), reason: reason.into() }
+fn skip(path: &Path, home: &Path, reason: &str) -> Skip {
+    Skip { category: ID.into(), title: crate::paths::tilde(path, home), reason: reason.into() }
 }
 
 /// True if `dir` is at or inside a protected path, so the walk must not
@@ -175,15 +175,16 @@ fn inside_protected(prot: &Protector, dir: &Path) -> bool {
 /// Breadth-first to `max_depth`, staying on each root's filesystem. Never
 /// descends into symlinks, protected paths, `.git`, artifact candidates, or
 /// dotdirs directly under a root. Symlinked, protected and git-tracked
-/// candidates become `Skip`s. `__pycache__` is found at any depth below a
-/// python project; every other artifact must sit next to its marker.
+/// candidates become `Skip`s, titled under `~` (`home`). `__pycache__` is found
+/// at any depth below a python project; every other artifact must sit next to its marker.
 pub fn discover(
     roots: &[PathBuf],
     max_depth: usize,
     ecos: &[EcoRule],
     prot: &Protector,
+    home: &Path,
 ) -> (Vec<Project>, Vec<Skip>) {
-    let d = discover_all(roots, max_depth, ecos, prot, &|_| true);
+    let d = discover_all(roots, max_depth, ecos, prot, home, &|_| true);
     (d.projects, d.skips)
 }
 
@@ -195,6 +196,7 @@ pub fn discover_all(
     max_depth: usize,
     ecos: &[EcoRule],
     prot: &Protector,
+    home: &Path,
     deny: &dyn Fn(&Path) -> bool,
 ) -> Discovery {
     let mut tagged: Vec<PathBuf> = Vec::new();
@@ -215,7 +217,7 @@ pub fn discover_all(
                 if !deny(&dir)
                     && let Ok(md) = dir.symlink_metadata()
                 {
-                    claim(&dir, &md, prot, &mut claimed, &mut tagged, &mut skips);
+                    claim(&dir, &md, prot, home, &mut claimed, &mut tagged, &mut skips);
                 }
                 continue;
             }
@@ -244,14 +246,14 @@ pub fn discover_all(
             let mut found = Vec::new();
             for c in &candidates {
                 if c.md.dev() != dev {
-                    skips.push(skip(&c.path, "mount point, not crossed"));
+                    skips.push(skip(&c.path, home, "mount point, not crossed"));
                     continue;
                 }
-                claim(&c.path, &c.md, prot, &mut claimed, &mut found, &mut skips);
+                claim(&c.path, &c.md, prot, home, &mut claimed, &mut found, &mut skips);
             }
             if python {
                 let not_here: HashSet<&Path> = candidates.iter().map(|c| c.path.as_path()).collect();
-                find_pycache(&dir, dev, &all_artifacts, &not_here, prot, &mut claimed, &mut found, &mut skips);
+                find_pycache(&dir, dev, &all_artifacts, &not_here, prot, home, &mut claimed, &mut found, &mut skips);
             }
             if !found.is_empty() {
                 let unticked = found.iter().filter(|f| unticked_paths.contains(f.as_path())).cloned().collect();
@@ -283,6 +285,7 @@ fn claim(
     path: &Path,
     md: &std::fs::Metadata,
     prot: &Protector,
+    home: &Path,
     claimed: &mut HashSet<PathBuf>,
     found: &mut Vec<PathBuf>,
     skips: &mut Vec<Skip>,
@@ -291,11 +294,11 @@ fn claim(
         return;
     }
     if md.file_type().is_symlink() {
-        skips.push(skip(path, "symlink, not followed"));
+        skips.push(skip(path, home, "symlink, not followed"));
     } else if prot.is_protected(path) {
-        skips.push(skip(path, "protected"));
+        skips.push(skip(path, home, "protected"));
     } else if crate::git::repo_root(path).is_some_and(|repo| crate::git::is_tracked(&repo, path)) {
-        skips.push(skip(path, "tracked in git"));
+        skips.push(skip(path, home, "tracked in git"));
     } else {
         claimed.insert(path.to_path_buf());
         found.push(path.to_path_buf());
@@ -312,6 +315,7 @@ fn find_pycache(
     artifact_pats: &[Pattern],
     not_here: &HashSet<&Path>,
     prot: &Protector,
+    home: &Path,
     claimed: &mut HashSet<PathBuf>,
     found: &mut Vec<PathBuf>,
     skips: &mut Vec<Skip>,
@@ -323,7 +327,7 @@ fn find_pycache(
                 continue;
             }
             if c.name == PYCACHE {
-                claim(&c.path, &c.md, prot, claimed, found, skips);
+                claim(&c.path, &c.md, prot, home, claimed, found, skips);
             } else if !matches_any(artifact_pats, &c.name) && !inside_protected(prot, &c.path) {
                 stack.push(c.path);
             }
@@ -358,7 +362,7 @@ impl Category for Artifacts {
         let roots = crate::paths::expand_roots(ctx.config.roots_for(&cfg.roots), ctx.home);
         let deny = tag_deny(ctx);
         let Discovery { projects, skips, mut tagged } =
-            discover_all(&roots, cfg.max_depth, &ecos, ctx.protector, &deny);
+            discover_all(&roots, cfg.max_depth, &ecos, ctx.protector, ctx.home, &deny);
         out.skipped.extend(skips);
 
         // Direct children of ~/.cache: the walk never enters dotdirs under a root.
@@ -403,7 +407,7 @@ impl Category for Artifacts {
                         side.1 += m.bytes;
                         side.0.push(Target { path: a.clone(), fp });
                     }
-                    Err(e) => out.skipped.push(skip(a, &format!("cannot measure: {e}"))),
+                    Err(e) => out.skipped.push(skip(a, ctx.home, &format!("cannot measure: {e}"))),
                 }
             }
             if ticked.0.is_empty() && unticked.0.is_empty() {
@@ -481,7 +485,7 @@ impl Category for Artifacts {
                         last_active: None,
                     });
                 }
-                Err(e) => out.skipped.push(skip(&dir, &format!("cannot measure: {e}"))),
+                Err(e) => out.skipped.push(skip(&dir, ctx.home, &format!("cannot measure: {e}"))),
             }
         }
         Ok(out)

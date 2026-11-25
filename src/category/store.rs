@@ -93,10 +93,11 @@ pub fn foreign_reason(uid: u32) -> String {
     format!("contains files owned by {who}; cleaner never runs as root")
 }
 
-/// The `Skip` for a rule root with foreign-owned units, if `found` has any.
-pub fn foreign_skip(category: &str, rule: &StoreRule, found: &Evaluated) -> Option<Skip> {
+/// The `Skip` for a rule root with foreign-owned units, if `found` has any;
+/// the root is shown under `~` (`home`).
+pub fn foreign_skip(category: &str, rule: &StoreRule, found: &Evaluated, home: &Path) -> Option<Skip> {
     let (_, uid) = found.foreign.first()?;
-    Some(Skip { category: category.into(), title: rule.root.display().to_string(), reason: foreign_reason(*uid) })
+    Some(Skip { category: category.into(), title: crate::paths::tilde(&rule.root, home), reason: foreign_reason(*uid) })
 }
 
 /// The units of `rule` that match at the current euid; see [`evaluate_as`].
@@ -293,7 +294,7 @@ pub fn scan_stores(
                 min_bytes: cfg.min_bytes,
             };
             let found = evaluate_as(&rule, ctx.now, ctx.protector, seen, ctx.euid);
-            out.skipped.extend(foreign_skip(category, &rule, &found));
+            out.skipped.extend(foreign_skip(category, &rule, &found, ctx.home));
             let matches = found.matches;
             if matches.is_empty() {
                 continue;

@@ -532,8 +532,7 @@ fn terragrunt_inf_root_owned_is_skip() {
     };
     let out = Caches.scan(&ctx, &mut InodeSet::default()).unwrap();
     assert!(store_entry(&out, &root).is_none(), "{:?}", out.entries);
-    let title = root.display().to_string();
-    let skips: Vec<_> = out.skipped.iter().filter(|s| s.title == title).collect();
+    let skips: Vec<_> = out.skipped.iter().filter(|s| s.title == "~/.cache/terragrunt-inf/providers").collect();
     assert_eq!(skips.len(), 1, "{:?}", out.skipped);
     assert_eq!(skips[0].reason, cleaner::category::store::foreign_reason(common::my_uid()));
 }

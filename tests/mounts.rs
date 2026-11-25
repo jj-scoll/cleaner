@@ -132,10 +132,10 @@ fn artifact_mount_point_not_claimed() {
         mkfile(&p.join("package.json"), 10);
         let precious = old_tmpfs(&p.join("node_modules"), 60);
         let prot = Protector::new(home, &[]);
-        let (projects, skips) = discover(&[home.to_path_buf()], 6, &builtin_ecosystems(), &prot);
+        let (projects, skips) = discover(&[home.to_path_buf()], 6, &builtin_ecosystems(), &prot, home);
         let found: Vec<&PathBuf> = projects.iter().flat_map(|p| &p.artifacts).collect();
         assert!(found.is_empty(), "{found:?}");
-        assert!(skips.iter().any(|s| s.title == p.join("node_modules").display().to_string()), "{skips:?}");
+        assert!(skips.iter().any(|s| s.title == "~/proj/node_modules"), "{skips:?}");
         assert!(precious.exists());
     });
 }

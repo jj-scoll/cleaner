@@ -173,7 +173,7 @@ fn tracked_tag_dir_skipped() {
     let out = scan_with(h, Config::default());
     assert!(tagged_entries(&out).is_empty(), "{:?}", out.entries);
     assert!(
-        out.skipped.iter().any(|s| s.title == h.join("proj/out").display().to_string() && s.reason == "tracked in git"),
+        out.skipped.iter().any(|s| s.title == "~/proj/out" &&s.reason == "tracked in git"),
         "{:?}",
         out.skipped
     );

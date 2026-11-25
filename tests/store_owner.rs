@@ -78,7 +78,7 @@ fn scan_stores_skips_foreign_root_once() {
         out.skipped,
         vec![Skip {
             category: "caches".into(),
-            title: f.root.display().to_string(),
+            title: "~/.cache/s".into(),
             reason: format!("contains files owned by uid {}; cleaner never runs as root", my_uid()),
         }]
     );
@@ -130,5 +130,6 @@ fn app_cache_foreign_dir_is_skip() {
     assert!(out.entries.is_empty(), "{:?}", out.entries);
     assert_eq!(out.skipped.len(), 1, "{:?}", out.skipped);
     assert_eq!(out.skipped[0].category, "app_caches");
+    assert_eq!(out.skipped[0].title, "~/.config/google-chrome");
     assert_eq!(out.skipped[0].reason, foreign_reason(my_uid()));
 }
