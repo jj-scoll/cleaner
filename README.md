@@ -29,14 +29,7 @@ Existing tools each cover one slice: kondo does build artifacts, nh does Nix, au
 
 ## How it works
 
-```mermaid
-flowchart LR
-    T["Nightly timer<br/>or 'cleaner plan'"] --> P["Plan<br/>(scan every category)"]
-    P --> N["Notify<br/>if ≥ 1 GiB can go"]
-    N --> R["Review<br/>GUI or 'cleaner show'"]
-    R --> A["Apply<br/>re-validate, then delete"]
-    A --> L["Log<br/>one JSON line per item"]
-```
+<p align="center"><img src="assets/flow.svg" alt="Plan, then Notify, then Review, then Apply, then Log" width="100%"></p>
 
 1. **Plan.** A scan of every enabled category writes a plan file. Each entry has its size, the reason it's there, and a fingerprint, and is either pre-selected or not. Anything skipped is listed with the reason.
 2. **Notify.** If the pre-selected total crosses a threshold (1 GiB by default), you get a desktop notification. Clicking it opens the plan.
