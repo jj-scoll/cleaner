@@ -4,7 +4,7 @@ Notable changes to cleaner. The release workflow publishes the section whose
 heading matches the tag (`## v0.2.0 …`) as that release's notes, so add an
 entry here before tagging.
 
-## Unreleased
+## v0.3.1 - 2026-11-25
 
 ### Added
 - Scan feedback in the window: under the progress bar, a live "1,240 folders

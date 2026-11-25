@@ -116,7 +116,7 @@ With holding on, apply moves files and folders into `~/.local/share/cleaner/hold
 Each [release](https://github.com/jj-scoll/cleaner/releases) has a single static binary for x86_64 and aarch64 Linux. It has everything but the GUI, and runs on any distro:
 
 ```sh
-v=v0.3.0 t=x86_64-unknown-linux-musl   # or aarch64-unknown-linux-musl
+v=v0.3.1 t=x86_64-unknown-linux-musl   # or aarch64-unknown-linux-musl
 curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz
 curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz.sha256
 sha256sum -c cleaner-$v-$t.tar.gz.sha256
