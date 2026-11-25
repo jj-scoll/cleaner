@@ -20,6 +20,8 @@ pub fn category_label(id: &str) -> String {
         "idle_folders" => "Large and old",
         "worktrees" => "Finished worktrees",
         "app_caches" => "Browser and app caches",
+        "ide_versions" => "Old IDE versions",
+        "ai_models" => "AI models",
         "docker" => "Docker",
         "nix" => "Nix",
         "scan_roots" => "Scan roots",

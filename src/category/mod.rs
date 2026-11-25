@@ -1,10 +1,12 @@
 //! The `Category` trait every cleanup category implements (scan → plan
 //! entries; apply → outcome), plus the shared apply helpers.
 
+pub mod ai_models;
 pub mod app_caches;
 pub mod artifacts;
 pub mod caches;
 pub mod docker;
+pub mod ide_versions;
 pub mod large_old;
 pub mod nix;
 pub mod store;
@@ -52,6 +54,45 @@ pub trait Category {
     fn apply(&self, entry: &Entry, ctx: &ScanCtx) -> Outcome {
         apply_default(entry, ctx)
     }
+}
+
+/// The `Item` targets for `paths`, their bytes counted against `seen`, and
+/// their newest mtime. `Err(reason)` if any path is protected, a symlink,
+/// partly unreadable, or holds files owned by another uid; then nothing is
+/// claimed in `seen`.
+pub fn item_targets(
+    paths: &[std::path::PathBuf],
+    ctx: &ScanCtx,
+    seen: &mut InodeSet,
+) -> Result<(Vec<Target>, u64, i64), String> {
+    let mut targets = Vec::new();
+    let mut newest = 0;
+    for p in paths {
+        if ctx.protector.is_protected(p) {
+            return Err(format!("{} is protected", p.display()));
+        }
+        // Judged on a private set first, like `store::evaluate_as`.
+        let m = crate::fsutil::measure::measure_as(p, &mut InodeSet::default(), ctx.euid)
+            .map_err(|e| format!("cannot measure: {e}"))?;
+        if m.errors > 0 {
+            return Err("partly unreadable".into());
+        }
+        if m.foreign > 0 {
+            return Err(store::foreign_reason(m.foreign_uid.unwrap_or(0)));
+        }
+        newest = newest.max(m.newest_mtime);
+        let fp = fingerprint(p).map_err(|e| format!("cannot fingerprint: {e}"))?;
+        targets.push(Target {
+            path: p.clone(),
+            fp,
+        });
+    }
+    let bytes = paths
+        .iter()
+        .filter_map(|p| crate::fsutil::measure::measure(p, seen).ok())
+        .map(|m| m.bytes)
+        .sum();
+    Ok((targets, bytes, newest))
 }
 
 /// Item → `apply_targets`; StoreRule → `store::apply_rule`. Object and

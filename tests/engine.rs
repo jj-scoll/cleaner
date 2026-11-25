@@ -322,6 +322,8 @@ fn registry_order_plan2() {
             "worktrees",
             "caches",
             "app_caches",
+            "ide_versions",
+            "ai_models",
             "user_rules",
             "trash",
             "idle_folders",

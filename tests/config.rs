@@ -194,6 +194,37 @@ fn default_toml_lists_plan2_keys() {
 }
 
 #[test]
+fn default_toml_lists_ai_and_ide_keys() {
+    let t: toml::Table = toml::from_str(&uncomment(DEFAULT_CONFIG_TOML)).unwrap();
+    for key in ["enabled", "huggingface", "ollama", "lmstudio"] {
+        assert_eq!(t["ai_models"][key].as_bool(), Some(true), "ai_models.{key}");
+    }
+    for key in ["enabled", "jetbrains", "vscode"] {
+        assert_eq!(
+            t["ide_versions"][key].as_bool(),
+            Some(true),
+            "ide_versions.{key}"
+        );
+    }
+    assert_eq!(t["ide_versions"]["idle_days"].as_integer(), Some(30));
+}
+
+#[test]
+fn ai_and_ide_sources_can_be_turned_off_one_by_one() {
+    let home = TempDir::new().unwrap();
+    let p = write_config(
+        &home,
+        "[ai_models]\nollama = false\n[ide_versions]\nvscode = false\n",
+    );
+    let (cfg, warnings) = load(&p).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(cfg.ai_models.enabled && cfg.ai_models.huggingface && cfg.ai_models.lmstudio);
+    assert!(!cfg.ai_models.ollama);
+    assert!(cfg.ide_versions.enabled && cfg.ide_versions.jetbrains);
+    assert!(!cfg.ide_versions.vscode);
+}
+
+#[test]
 fn default_toml_lists_plan4_keys() {
     let t: toml::Table = toml::from_str(&uncomment(DEFAULT_CONFIG_TOML)).unwrap();
     assert_eq!(t["scan_roots"].as_array().unwrap().len(), 1);

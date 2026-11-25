@@ -191,6 +191,31 @@ fn plan2_keys_roundtrip() {
     assert!(!loaded.docker.enabled);
 }
 
+#[test]
+fn ai_and_ide_keys_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    let path = write_config(&dir, DEFAULT_CONFIG_TOML);
+    let mut doc = ConfigDoc::load(&path).unwrap();
+    let mut c = doc.config().unwrap();
+    c.ai_models.enabled = false;
+    c.ide_versions.enabled = false;
+    c.ide_versions.idle_days = 45;
+    doc.update(&c).unwrap();
+    doc.save(&path).unwrap();
+
+    let (loaded, warnings) = config::load(&path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(loaded, c, "{}", fs::read_to_string(&path).unwrap());
+}
+
+#[test]
+fn ide_idle_days_must_be_positive() {
+    let mut c = Config::default();
+    c.ide_versions.idle_days = 0;
+    let errors = validate(&c).unwrap_err();
+    assert!(errors.iter().any(|e| e.contains("IDE")), "{errors:?}");
+}
+
 /// Every new editable key is written, and nothing else changes.
 #[test]
 fn plan2_every_key_roundtrips() {

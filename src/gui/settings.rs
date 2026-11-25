@@ -247,6 +247,9 @@ struct Inner {
     worktrees_enabled: adw::SwitchRow,
     worktrees_idle: adw::SpinRow,
     app_caches_enabled: adw::SwitchRow,
+    ide_enabled: adw::SwitchRow,
+    ide_idle: adw::SpinRow,
+    ai_enabled: adw::SwitchRow,
     docker_enabled: adw::SwitchRow,
     container_days: adw::SpinRow,
     build_cache_days: adw::SpinRow,
@@ -293,6 +296,9 @@ impl Inner {
         c.worktrees.enabled = self.worktrees_enabled.is_active();
         c.worktrees.idle_days = self.worktrees_idle.value().round() as u64;
         c.app_caches.enabled = self.app_caches_enabled.is_active();
+        c.ide_versions.enabled = self.ide_enabled.is_active();
+        c.ide_versions.idle_days = self.ide_idle.value().round() as u64;
+        c.ai_models.enabled = self.ai_enabled.is_active();
         c.docker.enabled = self.docker_enabled.is_active();
         c.docker.container_days = self.container_days.value().round() as u64;
         c.docker.build_cache_days = self.build_cache_days.value().round() as u64;
@@ -472,6 +478,29 @@ impl SettingsPage {
         let app_caches_enabled = switch("Enabled", config.app_caches.enabled);
         app_caches.add(&app_caches_enabled);
 
+        let ide = group(
+            "Old IDE versions",
+            Some("Older JetBrains IDE and VS Code extension versions; the newest is always kept."),
+        );
+        let ide_enabled = switch("Enabled", config.ide_versions.enabled);
+        let ide_idle = spin(
+            "Pre-select when untouched for (days)",
+            1.0,
+            36500.0,
+            1.0,
+            0,
+            config.ide_versions.idle_days as f64,
+        );
+        ide.add(&ide_enabled);
+        ide.add(&ide_idle);
+
+        let ai = group(
+            "AI models",
+            Some("Hugging Face, Ollama and LM Studio models; never pre-selected."),
+        );
+        let ai_enabled = switch("Enabled", config.ai_models.enabled);
+        ai.add(&ai_enabled);
+
         let d = &config.docker;
         let docker = group("Docker", None);
         let docker_enabled = switch("Enabled", d.enabled);
@@ -624,6 +653,8 @@ impl SettingsPage {
             &caches,
             &worktrees,
             &app_caches,
+            &ide,
+            &ai,
             &docker,
             &nix,
             &rules_group,
@@ -680,6 +711,9 @@ impl SettingsPage {
             worktrees_enabled,
             worktrees_idle,
             app_caches_enabled,
+            ide_enabled,
+            ide_idle,
+            ai_enabled,
             docker_enabled,
             container_days,
             build_cache_days,

@@ -108,6 +108,16 @@ impl ConfigDoc {
         if n.app_caches.enabled != o.app_caches.enabled {
             changes.push(("app_caches", "enabled", n.app_caches.enabled.into()));
         }
+        let (nv, ov) = (&n.ide_versions, &o.ide_versions);
+        if nv.enabled != ov.enabled {
+            changes.push(("ide_versions", "enabled", nv.enabled.into()));
+        }
+        if nv.idle_days != ov.idle_days {
+            changes.push(("ide_versions", "idle_days", int(nv.idle_days)?));
+        }
+        if n.ai_models.enabled != o.ai_models.enabled {
+            changes.push(("ai_models", "enabled", n.ai_models.enabled.into()));
+        }
         let (nd, od) = (&n.docker, &o.docker);
         if nd.enabled != od.enabled {
             changes.push(("docker", "enabled", nd.enabled.into()));
@@ -201,6 +211,9 @@ pub fn validate(c: &Config) -> Result<(), Vec<String>> {
     }
     if c.worktrees.idle_days < 1 {
         errors.push("worktree idle_days must be at least 1".into());
+    }
+    if c.ide_versions.idle_days < 1 {
+        errors.push("old IDE versions idle_days must be at least 1".into());
     }
     for r in &c.user_rules {
         if !(r.path.starts_with("~/") || r.path.starts_with('/')) {

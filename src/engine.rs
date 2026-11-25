@@ -5,10 +5,12 @@ use anyhow::bail;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::category::ai_models::AiModels;
 use crate::category::app_caches::AppCaches;
 use crate::category::artifacts::Artifacts;
 use crate::category::caches::Caches;
 use crate::category::docker::Docker;
+use crate::category::ide_versions::IdeVersions;
 use crate::category::large_old::LargeOld;
 use crate::category::nix::Nix;
 use crate::category::trash::Trash;
@@ -64,6 +66,12 @@ pub fn registry(cfg: &Config) -> Vec<Box<dyn Category>> {
         cats.push(Box::new(AppCaches {
             proc_root: PathBuf::from("/proc"),
         }));
+    }
+    if cfg.ide_versions.enabled {
+        cats.push(Box::new(IdeVersions));
+    }
+    if cfg.ai_models.enabled {
+        cats.push(Box::new(AiModels::from_process_env()));
     }
     cats.push(Box::new(UserRules));
     if cfg.trash.enabled {

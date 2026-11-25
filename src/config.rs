@@ -24,6 +24,8 @@ pub struct Config {
     pub idle_folders: IdleCfg,
     pub worktrees: WorktreesCfg,
     pub app_caches: AppCachesCfg,
+    pub ide_versions: IdeVersionsCfg,
+    pub ai_models: AiModelsCfg,
     pub docker: DockerCfg,
     pub nix: NixCfg,
     pub low_space: LowSpaceCfg,
@@ -151,6 +153,27 @@ pub struct AppCfg {
     /// file name. `comm` is never read: it is truncated to 15 bytes.
     #[serde(default)]
     pub exe: Vec<String>,
+}
+
+/// Old JetBrains IDE version dirs and old VS Code extension versions.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct IdeVersionsCfg {
+    pub enabled: bool,
+    pub jetbrains: bool,
+    pub vscode: bool,
+    /// Older JetBrains versions untouched this long are pre-selected.
+    pub idle_days: u64,
+}
+
+/// Hugging Face, Ollama and LM Studio model caches; never pre-selected.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct AiModelsCfg {
+    pub enabled: bool,
+    pub huggingface: bool,
+    pub ollama: bool,
+    pub lmstudio: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -302,6 +325,8 @@ impl Default for Config {
             idle_folders: IdleCfg::default(),
             worktrees: WorktreesCfg::default(),
             app_caches: AppCachesCfg::default(),
+            ide_versions: IdeVersionsCfg::default(),
+            ai_models: AiModelsCfg::default(),
             docker: DockerCfg::default(),
             nix: NixCfg::default(),
             low_space: LowSpaceCfg::default(),
@@ -397,6 +422,28 @@ impl Default for AppCachesCfg {
             .map(String::from)
             .into(),
             apps: default_apps(),
+        }
+    }
+}
+
+impl Default for IdeVersionsCfg {
+    fn default() -> Self {
+        IdeVersionsCfg {
+            enabled: true,
+            jetbrains: true,
+            vscode: true,
+            idle_days: 30,
+        }
+    }
+}
+
+impl Default for AiModelsCfg {
+    fn default() -> Self {
+        AiModelsCfg {
+            enabled: true,
+            huggingface: true,
+            ollama: true,
+            lmstudio: true,
         }
     }
 }
@@ -682,6 +729,25 @@ pub const DEFAULT_CONFIG_TOML: &str = r#"# cleaner configuration.
 # dirs = ["~/.config/discord"]
 # locks = ["~/.config/discord/SingletonLock"]
 # exe = ["discord", "Discord"]
+
+[ide_versions]
+# Old JetBrains IDE version dirs (~/.cache/JetBrains, ~/.local/share/JetBrains;
+# ~/.config/JetBrains is never touched) and old VS Code extension versions.
+# The newest version of each product or extension is always kept.
+# enabled = true
+# jetbrains = true
+# vscode = true
+# Older JetBrains versions untouched this long are pre-selected.
+# idle_days = 30
+
+[ai_models]
+# Hugging Face, Ollama and LM Studio models, one row each, never pre-selected:
+# file dates show when a model was downloaded, not when it was last used.
+# HF_HUB_CACHE, HF_HOME and OLLAMA_MODELS are honoured when set.
+# enabled = true
+# huggingface = true
+# ollama = true
+# lmstudio = true
 
 [docker]
 # enabled = true

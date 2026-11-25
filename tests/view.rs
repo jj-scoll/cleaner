@@ -192,6 +192,12 @@ fn plan2_labels() {
 }
 
 #[test]
+fn ai_and_ide_labels() {
+    assert_eq!(category_label("ai_models"), "AI models");
+    assert_eq!(category_label("ide_versions"), "Old IDE versions");
+}
+
+#[test]
 fn category_order_includes_skip_only_categories() {
     let mut p = plan(vec![], vec![]);
     p.skipped.push(cleaner::plan::Skip {

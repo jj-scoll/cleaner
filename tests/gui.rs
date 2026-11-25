@@ -442,6 +442,26 @@ fn settings_shows_plan2_groups() {
     assert!(order.is_sorted(), "groups out of order: {order:?}");
 }
 
+fn settings_shows_ai_and_ide_groups() {
+    let texts = texts(&SettingsPage::new(&Config::default(), false).page());
+    assert_has(&texts, "Pre-select when untouched for (days)");
+    // In registry order, between app caches and Docker.
+    let at = |t: &str| {
+        texts
+            .iter()
+            .position(|s| s == t)
+            .unwrap_or_else(|| panic!("{t:?} missing: {texts:#?}"))
+    };
+    let order = [
+        "Browser and app caches",
+        "Old IDE versions",
+        "AI models",
+        "Docker",
+    ]
+    .map(at);
+    assert!(order.is_sorted(), "groups out of order: {order:?}");
+}
+
 fn settings_general_has_scan_roots_and_low_space() {
     let t = texts(&SettingsPage::new(&Config::default(), false).page());
     for want in [
@@ -764,6 +784,10 @@ fn main() {
             settings_shows_builtins_locked,
         ),
         ("settings_shows_plan2_groups", settings_shows_plan2_groups),
+        (
+            "settings_shows_ai_and_ide_groups",
+            settings_shows_ai_and_ide_groups,
+        ),
         (
             "settings_docker_days_at_least_one",
             settings_docker_days_at_least_one,
