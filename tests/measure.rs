@@ -6,6 +6,42 @@ use std::fs::{self, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
 use tempfile::TempDir;
 
+/// The GUI's "N folders checked" line reads `dirs_read`. Other tests in this
+/// binary walk dirs concurrently, so only a lower bound can be asserted.
+#[test]
+fn dirs_read_counts_every_walker() {
+    use cleaner::fsutil::dirs_read;
+    use cleaner::protect::Protector;
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("r");
+    mkfile(&root.join("a/b/c/d/e/f"), 10); // r + 5 dirs = 6 dirs
+    let check = |what: &str, walk: &dyn Fn()| {
+        let before = dirs_read();
+        walk();
+        let delta = dirs_read() - before;
+        assert!(delta >= 6, "{what}: {delta} dirs read, want at least 6");
+    };
+    check("measure", &|| {
+        measure(&root, &mut InodeSet::default()).unwrap();
+    });
+    check("newest_mtime_excluding", &|| {
+        newest_mtime_excluding(&root, &|_| false);
+    });
+    let prot = Protector::new(tmp.path(), &[]);
+    check("walk_dirs", &|| {
+        cleaner::walk::walk_dirs(
+            std::slice::from_ref(&root),
+            10,
+            &prot,
+            &|_| false,
+            &mut |_, _| {},
+        )
+    });
+    check("usage::build", &|| {
+        cleaner::fsutil::usage::build(std::slice::from_ref(&root), &[], 0, now());
+    });
+}
+
 #[test]
 fn measure_sums_blocks() {
     let tmp = TempDir::new().unwrap();

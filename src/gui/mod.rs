@@ -23,6 +23,7 @@ use crate::fsutil::usage::UsageIndex;
 use crate::paths::Paths;
 use crate::plan::{Plan, Requested, resolve_requested};
 use crate::settings::ConfigDoc;
+use crate::view::dashboard::{scan_detail, scan_done};
 use crate::view::review::{ReviewModel, Sort};
 use crate::view::usage as view_usage;
 use dashboard::DashboardPage;
@@ -245,11 +246,28 @@ impl App {
     fn scan(self: &Rc<Self>) {
         let Some(config) = self.config() else { return };
         let paths = self.paths.clone();
-        self.dashboard.set_busy(Some(&Progress {
+        let first = Progress {
             done: 0,
             total: 0,
             current: String::new(),
-        }));
+            found: 0,
+        };
+        self.dashboard.set_busy(Some(&first));
+        // The engine reports once per category, which can take minutes on a
+        // big home; this ticker keeps the detail line moving in between.
+        let start = crate::fsutil::dirs_read();
+        let latest = Rc::new(RefCell::new(first));
+        let scanning = Rc::new(Cell::new(true));
+        let (app, last, live) = (Rc::downgrade(self), latest.clone(), scanning.clone());
+        glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
+            let Some(app) = app.upgrade().filter(|_| live.get()) else {
+                return glib::ControlFlow::Break;
+            };
+            let dirs = crate::fsutil::dirs_read() - start;
+            app.dashboard
+                .set_scan_detail(&scan_detail(&last.borrow(), dirs));
+            glib::ControlFlow::Continue
+        });
         let (on_progress, on_done) = (Rc::downgrade(self), Rc::downgrade(self));
         worker::run(
             move |progress| {
@@ -259,22 +277,44 @@ impl App {
                     jiff::Timestamp::now().as_second(),
                     progress,
                 )
-                .map(|_| ())
+                .map(|(plan, _)| plan)
             },
             move |p| {
                 if let Some(app) = on_progress.upgrade() {
                     app.dashboard.set_busy(Some(&p));
+                    *latest.borrow_mut() = p;
                 }
             },
             move |result| {
+                scanning.set(false);
                 let Some(app) = on_done.upgrade() else { return };
                 app.dashboard.set_busy(None);
-                if let Err(e) = result {
-                    app.alert("Scan failed", &error_text(&e));
+                match result {
+                    Ok(plan) => app.scan_done_toast(plan),
+                    Err(e) => app.alert("Scan failed", &error_text(&e)),
                 }
                 app.refresh();
             },
         );
+    }
+
+    /// "Scan done: …" with a Review button when the plan has entries.
+    fn scan_done_toast(self: &Rc<Self>, plan: Plan) {
+        let toast = adw::Toast::builder()
+            .title(scan_done(&plan))
+            .use_markup(false)
+            .timeout(10)
+            .build();
+        if !plan.entries.is_empty() {
+            toast.set_button_label(Some("Review"));
+            let app = Rc::downgrade(self);
+            toast.connect_button_clicked(move |_| {
+                if let Some(app) = app.upgrade() {
+                    app.open_review(plan.clone(), None);
+                }
+            });
+        }
+        self.toasts.add_toast(toast);
     }
 
     /// Pushes the review page for `plan` (one category when `filter` is set)

@@ -102,6 +102,8 @@ pub struct Progress {
     pub done: usize,
     pub total: usize,
     pub current: String,
+    /// Scan only: bytes of the entries found so far. Always 0 for apply.
+    pub found: u64,
 }
 
 /// `build_plan_with` without progress.
@@ -128,11 +130,13 @@ pub fn build_plan_with(
         report_only: Vec::new(),
     };
     let total = cats.len();
+    let mut found = 0;
     for (done, cat) in cats.iter().enumerate() {
         progress(Progress {
             done,
             total,
             current: cat.id().into(),
+            found,
         });
         let out = match cat.scan(&sc, &mut seen) {
             Ok(out) => out,
@@ -151,6 +155,7 @@ pub fn build_plan_with(
             n += 1;
             e
         };
+        found += out.entries.iter().map(|e| e.bytes).sum::<u64>();
         plan.entries
             .extend(out.entries.into_iter().map(&mut number));
         plan.report_only
@@ -163,6 +168,7 @@ pub fn build_plan_with(
         done: total,
         total,
         current: String::new(),
+        found,
     });
     Ok(plan)
 }
@@ -303,6 +309,7 @@ pub fn apply_plan_with(
             done,
             total,
             current: entry.title.clone(),
+            found: 0,
         });
         let held_area = area.as_ref().filter(|_| crate::hold::holdable(entry));
         let outcome = match (cats.iter().find(|c| c.id() == entry.category), held_area) {
@@ -368,6 +375,7 @@ pub fn apply_plan_with(
         done: total,
         total,
         current: String::new(),
+        found: 0,
     });
 
     let after = crate::disk::usage(&fs_paths);
@@ -579,6 +587,7 @@ pub fn plan_and_save_with(
                 done: 0,
                 total: cats.len(),
                 current: "disk index".into(),
+                found: 0,
             });
             let exclude: Vec<PathBuf> = EXCLUDE.iter().map(PathBuf::from).collect();
             let idx = build(&index_roots(config, &paths.home), &exclude, MIN_NODE, now);

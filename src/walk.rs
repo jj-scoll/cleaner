@@ -40,7 +40,7 @@ pub fn walk_dirs(
             if depth >= max_depth {
                 continue;
             }
-            let Ok(rd) = std::fs::read_dir(&dir) else {
+            let Ok(rd) = crate::fsutil::read_dir(&dir) else {
                 continue;
             };
             for entry in rd.flatten() {

@@ -5,7 +5,7 @@ use jiff::tz::TimeZone;
 
 use super::{Level, category_label, category_order, level_for};
 use crate::disk::FsUsage;
-use crate::fmt::{human_bytes, local_time};
+use crate::fmt::{human_bytes, local_time, plural};
 use crate::log::LogLine;
 use crate::plan::Plan;
 use crate::stats::Stats;
@@ -85,6 +85,55 @@ pub fn freed_card(s: &Stats) -> Option<FreedCard> {
         ),
         basis: basis.into(),
     })
+}
+
+/// The live line under the scan progress bar: "1,240 folders checked ·
+/// 3.1 GiB found so far". `dirs` counts since the scan began.
+pub fn scan_detail(p: &crate::engine::Progress, dirs: u64) -> String {
+    let folders = if dirs == 1 { "folder" } else { "folders" };
+    format!(
+        "{} {folders} checked · {} found so far",
+        thousands(dirs),
+        human_bytes(p.found)
+    )
+}
+
+/// The toast when a scan finishes: "Scan done: 14.2 GiB in 37 items,
+/// 9.8 GiB pre-selected", or "Scan done: nothing to clean up".
+pub fn scan_done(plan: &Plan) -> String {
+    if plan.entries.is_empty() {
+        return "Scan done: nothing to clean up".into();
+    }
+    let total: u64 = plan.entries.iter().map(|e| e.bytes).sum();
+    let selected: u64 = plan
+        .entries
+        .iter()
+        .filter(|e| e.selected)
+        .map(|e| e.bytes)
+        .sum();
+    let selected = if selected == 0 {
+        "none pre-selected".to_string()
+    } else {
+        format!("{} pre-selected", human_bytes(selected))
+    };
+    format!(
+        "Scan done: {} in {}, {selected}",
+        human_bytes(total),
+        plural(plan.entries.len(), "item")
+    )
+}
+
+/// `n` with comma thousands separators: "1,234,567".
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 pub fn dashboard(

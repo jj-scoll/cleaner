@@ -101,8 +101,36 @@ fn busy_shows_progress() {
         done: 1,
         total: 4,
         current: "Tool caches".into(),
+        found: 0,
     }));
     assert_has(&texts(&page.page()), "Scanning Tool caches…");
+}
+
+/// The live line under the bar shows what `set_scan_detail` was given, and a
+/// new scan starts with it blank.
+fn busy_shows_scan_detail() {
+    let page = DashboardPage::new();
+    page.update(&dashboard(&fs(), None, &[], &TimeZone::UTC));
+    let p = Progress {
+        done: 0,
+        total: 4,
+        current: String::new(),
+        found: 0,
+    };
+    page.set_busy(Some(&p));
+    page.set_scan_detail("1,240 folders checked · 3.1 GiB found so far");
+    assert_has(
+        &texts(&page.page()),
+        "1,240 folders checked · 3.1 GiB found so far",
+    );
+    page.set_busy(None);
+    page.set_busy(Some(&p));
+    assert!(
+        !texts(&page.page())
+            .iter()
+            .any(|t| t.contains("folders checked")),
+        "detail should reset when a scan starts"
+    );
 }
 
 fn model(p: Plan) -> Rc<RefCell<ReviewModel>> {
@@ -856,6 +884,7 @@ fn main() {
         ),
         ("dashboard_no_plan", dashboard_no_plan),
         ("busy_shows_progress", busy_shows_progress),
+        ("busy_shows_scan_detail", busy_shows_scan_detail),
         (
             "review_toggle_updates_clean_button",
             review_toggle_updates_clean_button,

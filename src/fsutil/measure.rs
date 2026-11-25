@@ -64,7 +64,7 @@ pub fn measure_as(path: &Path, seen: &mut InodeSet, euid: u32) -> io::Result<Mea
             }
             continue;
         }
-        let Ok(rd) = std::fs::read_dir(&p) else {
+        let Ok(rd) = super::read_dir(&p) else {
             m.errors += 1;
             continue;
         };
@@ -86,7 +86,7 @@ pub fn newest_mtime_excluding(root: &Path, skip: &dyn Fn(&Path) -> bool) -> i64 
     let mut newest = 0;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else {
+        let Ok(rd) = super::read_dir(&dir) else {
             continue;
         };
         for entry in rd.flatten() {

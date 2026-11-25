@@ -1,8 +1,9 @@
 use cleaner::disk::FsUsage;
+use cleaner::engine::Progress;
 use cleaner::log::LogLine;
 use cleaner::plan::{Entry, EntryKind, Plan};
 use cleaner::stats::{Stats, Total};
-use cleaner::view::dashboard::{Banner, FreedCard, dashboard, freed_card};
+use cleaner::view::dashboard::{Banner, FreedCard, dashboard, freed_card, scan_detail, scan_done};
 use cleaner::view::history::history;
 use cleaner::view::{Level, category_label, level_for};
 use jiff::tz::TimeZone;
@@ -47,6 +48,50 @@ fn line(run_id: &str, plan_id: &str, time: i64, outcome: &str, bytes: u64) -> Lo
         bytes,
         detail: String::new(),
     }
+}
+
+#[test]
+fn scan_detail_text() {
+    let p = |found| Progress {
+        done: 1,
+        total: 9,
+        current: "artifacts".into(),
+        found,
+    };
+    assert_eq!(
+        scan_detail(&p(3 * GIB + GIB / 10), 1240),
+        "1,240 folders checked · 3.1 GiB found so far"
+    );
+    assert_eq!(scan_detail(&p(0), 1), "1 folder checked · 0 B found so far");
+    assert_eq!(
+        scan_detail(&p(512), 1_234_567),
+        "1,234,567 folders checked · 512 B found so far"
+    );
+}
+
+#[test]
+fn scan_done_text() {
+    assert_eq!(
+        scan_done(&plan(vec![], vec![entry("nix:0", "nix", GIB, false)])),
+        "Scan done: nothing to clean up"
+    );
+    assert_eq!(
+        scan_done(&plan(
+            vec![
+                entry("caches:0", "caches", 9 * GIB, true),
+                entry("artifacts:0", "artifacts", GIB, false),
+            ],
+            vec![]
+        )),
+        "Scan done: 10.0 GiB in 2 items, 9.0 GiB pre-selected"
+    );
+    assert_eq!(
+        scan_done(&plan(
+            vec![entry("ai_models:0", "ai_models", GIB, false)],
+            vec![]
+        )),
+        "Scan done: 1.0 GiB in 1 item, none pre-selected"
+    );
 }
 
 fn ready_plan() -> Plan {

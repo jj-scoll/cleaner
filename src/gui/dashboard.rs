@@ -20,6 +20,7 @@ struct Inner {
     progress_box: gtk::Box,
     progress_label: gtk::Label,
     progress_bar: gtk::ProgressBar,
+    progress_detail: gtk::Label,
     disks: gtk::Box,
     banner: gtk::Box,
     categories: gtk::Box,
@@ -93,9 +94,11 @@ impl DashboardPage {
 
         let progress_label = label("", &["dim-label"]);
         let progress_bar = gtk::ProgressBar::new();
+        let progress_detail = label("", &["dim-label", "caption", "numeric"]);
         let progress_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         progress_box.append(&progress_label);
         progress_box.append(&progress_bar);
+        progress_box.append(&progress_detail);
         progress_box.set_visible(false);
 
         let disks = gtk::Box::builder().spacing(12).homogeneous(true).build();
@@ -156,6 +159,7 @@ impl DashboardPage {
             progress_box,
             progress_label,
             progress_bar,
+            progress_detail,
             disks,
             banner,
             categories,
@@ -315,10 +319,20 @@ impl DashboardPage {
         *self.inner.on_disk.borrow_mut() = Some(Rc::new(move |()| f()));
     }
 
+    /// The live line under the progress bar, e.g. "1,240 folders checked ·
+    /// 3.1 GiB found so far".
+    pub fn set_scan_detail(&self, text: &str) {
+        self.inner.progress_detail.set_label(text);
+    }
+
     /// Shows scan progress and makes the buttons insensitive; `None` = idle.
+    /// Going from idle to busy blanks the detail line.
     pub fn set_busy(&self, p: Option<&Progress>) {
         let i = &self.inner;
         let busy = p.is_some();
+        if busy && !i.progress_box.is_visible() {
+            i.progress_detail.set_label("");
+        }
         i.progress_box.set_visible(busy);
         for w in [
             i.scan_button.upcast_ref::<gtk::Widget>(),

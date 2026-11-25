@@ -303,6 +303,24 @@ fn build_plan_reports_progress() {
     assert_eq!(last.current, "");
 }
 
+/// `found` is the bytes of the entries found so far: 0 before the first
+/// category, never decreasing, and the plan's total at the end.
+#[test]
+fn build_plan_reports_bytes_found_so_far() {
+    let (_tmp, ctx) = fixture();
+    let cats = registry(&ctx.config);
+    let mut events: Vec<Progress> = Vec::new();
+    let plan = build_plan_with(&ctx, &cats, &mut |p| events.push(p)).unwrap();
+    let total: u64 = plan.entries.iter().map(|e| e.bytes).sum();
+    assert!(total > 0, "fixture should find something");
+    assert_eq!(events[0].found, 0);
+    assert!(
+        events.windows(2).all(|w| w[0].found <= w[1].found),
+        "{events:?}"
+    );
+    assert_eq!(events.last().unwrap().found, total, "{events:?}");
+}
+
 #[test]
 fn apply_plan_reports_progress() {
     let (_tmp, ctx) = fixture();

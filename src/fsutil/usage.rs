@@ -128,7 +128,7 @@ impl Walk<'_> {
             newest_mtime: md.mtime(),
             ..Node::default()
         };
-        let Ok(rd) = std::fs::read_dir(path) else {
+        let Ok(rd) = super::read_dir(path) else {
             node.unreadable_owner = Some(md.uid());
             return node;
         };
