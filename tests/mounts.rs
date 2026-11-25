@@ -229,6 +229,27 @@ fn index_stays_on_device() {
 }
 
 #[test]
+fn explain_names_mount_points() {
+    in_mount_ns("explain_names_mount_points", |home| {
+        let p = home.join("proj");
+        mkfile(&p.join("package.json"), 10);
+        set_age(&p.join("package.json"), 60);
+        old_tmpfs(&p.join("node_modules"), 60);
+        let config = Config::default();
+        with_ctx(home, &config, |ctx| {
+            for path in [p.join("node_modules"), p.join("node_modules/precious")] {
+                let e = cleaner::explain::explain(&path, None, ctx);
+                assert_eq!(e.status, cleaner::explain::Status::NotPlanned, "{e:?}");
+                assert_eq!(
+                    e.reason, "on another filesystem (mount point ~/proj/node_modules)",
+                    "{e:?}"
+                );
+            }
+        });
+    });
+}
+
+#[test]
 fn mount_point_is_same_dev_ancestor() {
     use std::os::unix::fs::MetadataExt;
     let tmp = tempfile::TempDir::new().unwrap();

@@ -22,4 +22,8 @@ impl Category for UserRules {
             &|_| false,
         ))
     }
+
+    fn explain(&self, path: &std::path::Path, ctx: &ScanCtx) -> Option<crate::category::Why> {
+        crate::category::store::explain_stores(&ctx.config.user_rules, path, ctx)
+    }
 }

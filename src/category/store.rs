@@ -152,46 +152,227 @@ pub fn evaluate_as(
 
     let mut out = Evaluated::default();
     for unit in units(&rule.root, root_md.dev(), &rule.unit, prot) {
-        if prot.is_protected(&unit) {
-            continue;
-        }
-        if let Some(p) = &glob {
-            let name = unit.file_name().unwrap_or_default().to_string_lossy();
-            if !p.matches(&name) {
-                continue;
+        match judge(&unit, glob.as_ref(), cutoff, rule.min_bytes, prot, euid) {
+            // Before the counting measure: a foreign unit never claims inodes in `seen`.
+            Judged::Foreign(uid) => out.foreign.push((unit, uid)),
+            Judged::Matches { newest_mtime } => {
+                let Ok(counted) = measure(&unit, seen) else {
+                    continue;
+                };
+                out.matches.push(Match {
+                    path: unit,
+                    bytes: counted.bytes,
+                    newest_mtime,
+                });
             }
+            _ => {}
         }
-        // Judge age and size on a private set, so a unit that doesn't match
-        // leaves `seen` untouched for whatever else in the plan shares inodes.
-        let Ok(m) = measure_as(&unit, &mut InodeSet::default(), euid) else {
-            continue;
-        };
-        if m.errors > 0 || m.newest_mtime >= cutoff {
-            continue; // unreadable parts could hide something new: fail safe
-        }
-        if rule.min_bytes.is_some_and(|min| m.bytes < min) {
-            continue;
-        }
-        // Before the git check and the counting measure: a foreign unit
-        // never claims inodes in `seen`.
-        if m.foreign > 0 {
-            out.foreign.push((unit, m.foreign_uid.unwrap_or(0)));
-            continue;
-        }
-        // §6.3, checked last: it spawns git for units inside a repo.
-        if crate::git::repo_root(&unit).is_some_and(|repo| crate::git::is_tracked(&repo, &unit)) {
-            continue;
-        }
-        let Ok(counted) = measure(&unit, seen) else {
-            continue;
-        };
-        out.matches.push(Match {
-            path: unit,
-            bytes: counted.bytes,
-            newest_mtime: m.newest_mtime,
-        });
     }
     out
+}
+
+/// What [`evaluate_as`] decides about one unit, in the order it checks.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Judged {
+    Protected,
+    GlobMismatch,
+    Unmeasurable,
+    /// Has unreadable parts, which could hide something new.
+    Unreadable,
+    TooNew {
+        newest_mtime: i64,
+    },
+    TooSmall {
+        bytes: u64,
+    },
+    /// Holds a file owned by this uid (the first one found).
+    Foreign(u32),
+    Tracked,
+    Matches {
+        newest_mtime: i64,
+    },
+}
+
+/// The per-unit tests of [`evaluate_as`]. Measures on a private set, so a
+/// unit that doesn't match leaves the plan's `seen` untouched.
+fn judge(
+    unit: &Path,
+    glob: Option<&glob::Pattern>,
+    cutoff: i64,
+    min_bytes: Option<u64>,
+    prot: &Protector,
+    euid: u32,
+) -> Judged {
+    if prot.is_protected(unit) {
+        return Judged::Protected;
+    }
+    if let Some(p) = glob {
+        let name = unit.file_name().unwrap_or_default().to_string_lossy();
+        if !p.matches(&name) {
+            return Judged::GlobMismatch;
+        }
+    }
+    let Ok(m) = measure_as(unit, &mut InodeSet::default(), euid) else {
+        return Judged::Unmeasurable;
+    };
+    if m.errors > 0 {
+        return Judged::Unreadable; // fail safe
+    }
+    if m.newest_mtime >= cutoff {
+        return Judged::TooNew {
+            newest_mtime: m.newest_mtime,
+        };
+    }
+    if min_bytes.is_some_and(|min| m.bytes < min) {
+        return Judged::TooSmall { bytes: m.bytes };
+    }
+    // Before the git check.
+    if m.foreign > 0 {
+        return Judged::Foreign(m.foreign_uid.unwrap_or(0));
+    }
+    // §6.3, checked last: it spawns git for units inside a repo.
+    if crate::git::repo_root(unit).is_some_and(|repo| crate::git::is_tracked(&repo, unit)) {
+        return Judged::Tracked;
+    }
+    Judged::Matches {
+        newest_mtime: m.newest_mtime,
+    }
+}
+
+/// `rule` in words, e.g. "files directly under ~/Downloads, older than 90 days".
+pub fn describe(rule: &StoreRule, home: &Path) -> String {
+    let root = crate::paths::tilde(&rule.root, home);
+    let unit = match &rule.unit {
+        Unit::Files { recursive: false } => format!("files directly under {root}"),
+        Unit::Files { recursive: true } => format!("files at any depth under {root}"),
+        Unit::Depth(n) => format!("entries {n} level(s) below {root}"),
+        Unit::NameContains(s) => format!("dirs under {root} whose name contains {s:?}"),
+        Unit::DirsNamed(names) => format!("dirs named {} under {root}", names.join(", ")),
+    };
+    let mut out = match rule.max_age_days {
+        0 => format!("{unit}, any age"),
+        n => format!("{unit}, older than {}", crate::fmt::plural(n, "day")),
+    };
+    if let Some(g) = &rule.glob {
+        out.push_str(&format!(", named {g}"));
+    }
+    if let Some(min) = rule.min_bytes {
+        out.push_str(&format!(", at least {}", crate::fmt::human_bytes(min)));
+    }
+    out
+}
+
+/// What `rule` says about `path`, or `None` when `path` is not at or under
+/// its root: the store root itself, a unit, or something inside a unit is
+/// judged with the same tests [`evaluate_as`] uses. Read-only.
+pub fn explain_rule(rule: &StoreRule, path: &Path, ctx: &ScanCtx) -> Option<crate::category::Why> {
+    use crate::category::Why;
+    use crate::fmt::plural;
+    if !path.starts_with(&rule.root) {
+        return None;
+    }
+    let root_md = std::fs::symlink_metadata(&rule.root).ok()?;
+    if !root_md.is_dir() {
+        return None;
+    }
+    let what = describe(rule, ctx.home);
+    if path == rule.root {
+        let found = evaluate_as(
+            rule,
+            ctx.now,
+            ctx.protector,
+            &mut InodeSet::default(),
+            ctx.euid,
+        );
+        return Some(if !found.matches.is_empty() {
+            Why::Match(format!(
+                "store root of the rule \"{what}\"; {} matching now",
+                plural(found.matches.len(), "unit")
+            ))
+        } else if let Some((_, uid)) = found.foreign.first() {
+            Why::NearMiss(foreign_reason(*uid))
+        } else {
+            Why::NearMiss(format!(
+                "store root of the rule \"{what}\", but nothing in it matches now"
+            ))
+        });
+    }
+    let units = units(&rule.root, root_md.dev(), &rule.unit, ctx.protector);
+    let Some(unit) = units.into_iter().find(|u| path.starts_with(u)) else {
+        return Some(Why::NearMiss(format!(
+            "inside {} but not one of the rule's units ({what})",
+            crate::paths::tilde(&rule.root, ctx.home)
+        )));
+    };
+    let part_of = if unit == path {
+        String::new()
+    } else {
+        format!(
+            " (judged as part of {})",
+            crate::paths::tilde(&unit, ctx.home)
+        )
+    };
+    let glob = rule.glob.as_ref().and_then(|g| glob::Pattern::new(g).ok());
+    let cutoff = ctx
+        .now
+        .saturating_sub(rule.max_age_days.saturating_mul(86_400) as i64);
+    let why = match judge(
+        &unit,
+        glob.as_ref(),
+        cutoff,
+        rule.min_bytes,
+        ctx.protector,
+        ctx.euid,
+    ) {
+        Judged::Protected => Why::NearMiss("protected path".into()),
+        Judged::GlobMismatch => Why::NearMiss(format!("name doesn't match the rule ({what})")),
+        Judged::Unmeasurable => Why::NearMiss("cannot be measured".into()),
+        Judged::Unreadable => Why::NearMiss("has unreadable parts; skipped to be safe".into()),
+        Judged::TooNew { newest_mtime } => Why::NotYet(format!(
+            "untouched for {}; rule needs {}",
+            plural((ctx.now - newest_mtime).max(0) / 86_400, "day"),
+            rule.max_age_days
+        )),
+        Judged::TooSmall { bytes } => Why::NotYet(format!(
+            "only {}; rule needs at least {}",
+            crate::fmt::human_bytes(bytes),
+            crate::fmt::human_bytes(rule.min_bytes.unwrap_or(0))
+        )),
+        Judged::Foreign(uid) => Why::NearMiss(foreign_reason(uid)),
+        Judged::Tracked => Why::NearMiss("tracked in git".into()),
+        Judged::Matches { .. } => Why::Match(format!("matches the rule \"{what}\"")),
+    };
+    Some(match why {
+        Why::NearMiss(s) => Why::NearMiss(s + &part_of),
+        Why::NotYet(s) => Why::NotYet(s + &part_of),
+        Why::Match(s) => Why::Match(s + &part_of),
+    })
+}
+
+/// [`explain_rule`] over every expanded root of `stores`; the most decisive
+/// answer wins. Stores with an invalid unit say nothing.
+pub fn explain_stores(
+    stores: &[StoreCfg],
+    path: &Path,
+    ctx: &ScanCtx,
+) -> Option<crate::category::Why> {
+    let mut best = None;
+    for cfg in stores {
+        let Ok(unit) = cfg.unit.parse::<Unit>() else {
+            continue;
+        };
+        for root in crate::paths::expand(&cfg.path, ctx.home) {
+            let rule = StoreRule {
+                root,
+                max_age_days: cfg.max_age_days,
+                unit: unit.clone(),
+                glob: cfg.glob.clone(),
+                min_bytes: cfg.min_bytes,
+            };
+            best = crate::category::Why::best(best, explain_rule(&rule, path, ctx));
+        }
+    }
+    best
 }
 
 /// The `n` largest units matching `rule` now (for the GUI's expandable store

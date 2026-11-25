@@ -176,7 +176,7 @@ pub struct RunReport {
 
 /// Every root string the config names: `scan_roots`, the artifacts/worktrees/nix
 /// overrides and `disk_map.roots`, distinct, in that order.
-fn all_root_strings(config: &Config) -> Vec<&String> {
+pub(crate) fn all_root_strings(config: &Config) -> Vec<&String> {
     let mut out: Vec<&String> = Vec::new();
     let lists = [
         Some(&config.scan_roots),

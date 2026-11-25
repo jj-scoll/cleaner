@@ -8,7 +8,7 @@ use std::ffi::OsStr;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use crate::category::{Category, ScanCtx, ScanOutput};
+use crate::category::{Category, ScanCtx, ScanOutput, Why};
 use crate::fmt::plural;
 use crate::fsutil::measure::{InodeSet, measure, newest_mtime_excluding};
 use crate::plan::{Entry, EntryKind, Skip, Target, fingerprint};
@@ -359,8 +359,7 @@ pub fn discover_all(
             for c in &kids {
                 let descend = c.md.is_dir() // lstat: false for symlinks
                     && c.md.dev() == dev
-                    && c.name != ".git"
-                    && !(depth == 0 && c.name.as_encoded_bytes().starts_with(b"."))
+                    && enters(&c.name, depth)
                     && !candidates.iter().any(|k| k.path == c.path)
                     && !inside_protected(prot, &c.path);
                 if descend {
@@ -374,6 +373,12 @@ pub fn discover_all(
         skips,
         tagged,
     }
+}
+
+/// The walk's name rule for entering a child of a dir at `depth`: never
+/// `.git`, and no dotdir directly under a root.
+fn enters(name: &OsStr, depth: usize) -> bool {
+    name != ".git" && !(depth == 0 && name.as_encoded_bytes().starts_with(b"."))
 }
 
 /// Records `path` as an artifact unless it's a symlink, protected, tracked
@@ -441,6 +446,10 @@ pub struct Artifacts;
 impl Category for Artifacts {
     fn id(&self) -> &'static str {
         ID
+    }
+
+    fn explain(&self, path: &Path, ctx: &ScanCtx) -> Option<Why> {
+        self.explain_dir(path, ctx)
     }
 
     fn scan(&self, ctx: &ScanCtx, seen: &mut InodeSet) -> anyhow::Result<ScanOutput> {
@@ -536,15 +545,7 @@ impl Category for Artifacts {
             }
 
             let excluded: HashSet<&Path> = p.artifacts.iter().map(PathBuf::as_path).collect();
-            let skip_fn =
-                |q: &Path| excluded.contains(q) || q.file_name() == Some(OsStr::new(".git"));
-            let file_age = newest_mtime_excluding(&p.dir, &skip_fn);
-            let root = crate::git::repo_root(&p.dir);
-            let commit_age = root
-                .as_deref()
-                .and_then(crate::git::last_commit_time)
-                .unwrap_or(0);
-            let last_active = file_age.max(commit_age);
+            let (last_active, root) = project_last_active(&p.dir, &excluded);
             let idle_secs = ctx.now - last_active;
             let days = idle_secs.max(0) / 86_400;
             let selected = idle_secs > cfg.stale_after_days as i64 * 86_400;
@@ -621,6 +622,293 @@ impl Category for Artifacts {
             }
         }
         Ok(out)
+    }
+}
+
+/// Last activity of a project dir as the scan measures it: the newest file
+/// outside `excluded` (its artifacts) and `.git`, or HEAD's commit time if
+/// later. Also returns the enclosing repo root.
+fn project_last_active(dir: &Path, excluded: &HashSet<&Path>) -> (i64, Option<PathBuf>) {
+    let skip_fn = |q: &Path| excluded.contains(q) || q.file_name() == Some(OsStr::new(".git"));
+    let file_age = newest_mtime_excluding(dir, &skip_fn);
+    let root = crate::git::repo_root(dir);
+    let commit_age = root
+        .as_deref()
+        .and_then(crate::git::last_commit_time)
+        .unwrap_or(0);
+    (file_age.max(commit_age), root)
+}
+
+/// The built-in ecosystems plus the valid `extra_rules`.
+fn configured_ecosystems(extra_rules: &[String]) -> Vec<EcoRule> {
+    let mut ecos = builtin_ecosystems();
+    ecos.extend(extra_rules.iter().filter_map(|r| parse_custom_rule(r).ok()));
+    ecos
+}
+
+/// The first child of `dir` matching one of `eco`'s markers.
+fn marker_in(eco: &EcoRule, dir: &Path) -> Option<std::ffi::OsString> {
+    children(dir)
+        .into_iter()
+        .find(|c| matches_any(&eco.markers, &c.name))
+        .map(|c| c.name)
+}
+
+/// The first ecosystem with an artifact pattern matching `name` and a marker
+/// in `dir`, with that marker's name: what makes `dir/name` a candidate.
+fn eco_with_marker<'a>(
+    ecos: &'a [EcoRule],
+    dir: &Path,
+    name: &OsStr,
+) -> Option<(&'a EcoRule, std::ffi::OsString)> {
+    ecos.iter()
+        .filter(|e| matches_any(&e.artifacts, name))
+        .find_map(|e| Some((e, marker_in(e, dir)?)))
+}
+
+/// Children of `project` the walk would take as artifact candidates.
+fn candidates_in(project: &Path, ecos: &[EcoRule]) -> Vec<PathBuf> {
+    children(project)
+        .into_iter()
+        .filter(|c| {
+            let ft = c.md.file_type();
+            (ft.is_dir() || ft.is_symlink()) && eco_with_marker(ecos, project, &c.name).is_some()
+        })
+        .map(|c| c.path)
+        .collect()
+}
+
+/// The python project `pycache` belongs to: the nearest ancestor with a
+/// python marker that `find_pycache` would reach it from (no `.git` or
+/// other artifact-named dir in between).
+fn pycache_project(pycache: &Path, root: &Path, ecos: &[EcoRule]) -> Option<PathBuf> {
+    let python = ecos.iter().find(|e| e.name == "python")?;
+    let all: Vec<Pattern> = ecos.iter().flat_map(|e| e.artifacts.clone()).collect();
+    let mut dir = pycache.parent()?;
+    loop {
+        if marker_in(python, dir).is_some() {
+            return Some(dir.to_path_buf());
+        }
+        let name = dir.file_name()?;
+        if dir == root || name == ".git" || matches_any(&all, name) {
+            return None;
+        }
+        dir = dir.parent()?;
+    }
+}
+
+/// Why the walk from `root` never lists the children of `dir`, or `None`.
+fn unreached(
+    root: &Path,
+    dir: &Path,
+    max_depth: usize,
+    ecos: &[EcoRule],
+    home: &Path,
+) -> Option<String> {
+    let rel = dir.strip_prefix(root).ok()?;
+    let names: Vec<&OsStr> = rel.iter().collect();
+    if names.len() > max_depth {
+        return Some(format!(
+            "deeper than artifacts.max_depth ({max_depth}) below {}",
+            crate::paths::tilde(root, home)
+        ));
+    }
+    let mut cur = root.to_path_buf();
+    for (depth, name) in names.into_iter().enumerate() {
+        let next = cur.join(name);
+        let shown = crate::paths::tilde(&next, home);
+        if !enters(name, depth) {
+            return Some(if name == ".git" {
+                "inside .git".into()
+            } else {
+                format!("under {shown}; the walk never enters dot-dirs at the top of a scan root")
+            });
+        }
+        if eco_with_marker(ecos, &cur, name).is_some() {
+            return Some(format!("inside another artifact ({shown})"));
+        }
+        if has_cachedir_tag(&next) {
+            return Some(format!("inside a CACHEDIR.TAG cache ({shown})"));
+        }
+        cur = next;
+    }
+    None
+}
+
+/// Whether a scan pre-selects the artifacts of `project` (`Ok(age words)`),
+/// or why not (`Err`), by the same age and finished-worktree rules.
+fn preselection(
+    project: &Path,
+    eco: &EcoRule,
+    ecos: &[EcoRule],
+    ctx: &ScanCtx,
+) -> Result<String, String> {
+    if !eco.preselect {
+        return Err(format!("{} artifacts are never pre-selected", eco.name));
+    }
+    let cands = candidates_in(project, ecos);
+    let excluded: HashSet<&Path> = cands.iter().map(PathBuf::as_path).collect();
+    let (last_active, root) = project_last_active(project, &excluded);
+    let idle = ctx.now - last_active;
+    let days = plural(idle.max(0) / 86_400, "day");
+    let stale = ctx.config.artifacts.stale_after_days;
+    if idle > stale as i64 * 86_400 {
+        Ok(format!("untouched for {days}"))
+    } else if root
+        .is_some_and(|r| r.join(".git").is_file() && crate::category::worktrees::is_finished(&r))
+    {
+        Ok(format!("active {days} ago, but its worktree is finished"))
+    } else {
+        Err(format!("untouched for {days}; rule needs {stale}"))
+    }
+}
+
+/// The ecosystem rule behind an artifact at `path` and its project dir.
+fn rule_of(path: &Path, ctx: &ScanCtx, ecos: &[EcoRule]) -> Option<(String, PathBuf, usize)> {
+    let name = path.file_name()?;
+    let parent = path.parent()?;
+    if let Some((e, marker)) = eco_with_marker(ecos, parent, name) {
+        let i = ecos.iter().position(|x| std::ptr::eq(x, e))?;
+        let text = format!(
+            "{}: {} next to {}",
+            e.name,
+            name.to_string_lossy(),
+            marker.to_string_lossy()
+        );
+        return Some((text, parent.to_path_buf(), i));
+    }
+    if name == PYCACHE {
+        let roots =
+            crate::paths::expand_roots(ctx.config.roots_for(&ctx.config.artifacts.roots), ctx.home);
+        let root = roots.iter().find(|r| path.starts_with(r))?;
+        let project = pycache_project(path, root, ecos)?;
+        let i = ecos.iter().position(|e| e.name == "python")?;
+        return Some((
+            "python: __pycache__ below a python project".into(),
+            project,
+            i,
+        ));
+    }
+    None
+}
+
+/// The rule that planned the artifacts target `path`, in words.
+pub fn rule_for(path: &Path, ctx: &ScanCtx) -> Option<String> {
+    let ecos = configured_ecosystems(&ctx.config.artifacts.extra_rules);
+    match rule_of(path, ctx, &ecos) {
+        Some((text, _, _)) => Some(text),
+        None => has_cachedir_tag(path).then(|| "CACHEDIR.TAG cache directory".to_string()),
+    }
+}
+
+/// Why a scan doesn't pre-select the artifacts target `path`, or `None`
+/// when it would (or the rule can't be found now).
+pub fn not_preselected(path: &Path, ctx: &ScanCtx) -> Option<String> {
+    let ecos = configured_ecosystems(&ctx.config.artifacts.extra_rules);
+    match rule_of(path, ctx, &ecos) {
+        Some((_, project, i)) => preselection(&project, &ecos[i], &ecos, ctx).err(),
+        None => has_cachedir_tag(path).then(|| "CACHEDIR.TAG caches are never pre-selected".into()),
+    }
+}
+
+impl Artifacts {
+    fn explain_dir(&self, path: &Path, ctx: &ScanCtx) -> Option<Why> {
+        let cfg = &ctx.config.artifacts;
+        let md = path.symlink_metadata().ok()?;
+        if !md.is_dir() {
+            return None;
+        }
+        let name = path.file_name()?;
+        let parent = path.parent()?;
+        let ecos = configured_ecosystems(&cfg.extra_rules);
+        let named: Vec<&EcoRule> = ecos
+            .iter()
+            .filter(|e| matches_any(&e.artifacts, name))
+            .collect();
+        let tagged = has_cachedir_tag(path);
+        if named.is_empty() && !tagged {
+            return None;
+        }
+        let roots = crate::paths::expand_roots(ctx.config.roots_for(&cfg.roots), ctx.home);
+        let root = roots
+            .iter()
+            .find(|r| path.starts_with(r) && path != r.as_path());
+
+        if !named.is_empty() {
+            let Some(root) = root else {
+                let shown: Vec<String> = roots
+                    .iter()
+                    .map(|r| crate::paths::tilde(r, ctx.home))
+                    .collect();
+                return Some(Why::NearMiss(format!(
+                    "outside the artifacts scan roots ({})",
+                    shown.join(", ")
+                )));
+            };
+            let found = if name == PYCACHE {
+                pycache_project(path, root, &ecos).map(|p| {
+                    let i = ecos.iter().position(|e| e.name == "python").unwrap_or(0);
+                    (
+                        "python: __pycache__ below a python project".to_string(),
+                        p,
+                        i,
+                    )
+                })
+            } else {
+                rule_of(path, ctx, &ecos)
+            };
+            if let Some((rule, project, i)) = found {
+                if let Some(why) = unreached(root, &project, cfg.max_depth, &ecos, ctx.home) {
+                    return Some(Why::NearMiss(why));
+                }
+                return Some(Why::Match(
+                    match preselection(&project, &ecos[i], &ecos, ctx) {
+                        Ok(age) => format!("{rule}; {age}"),
+                        Err(why) => format!("{rule}; listed but not pre-selected: {why}"),
+                    },
+                ));
+            }
+            if !tagged {
+                let mut markers: Vec<&str> = Vec::new();
+                for m in named.iter().flat_map(|e| &e.markers) {
+                    if !markers.contains(&m.as_str()) {
+                        markers.push(m.as_str());
+                    }
+                }
+                let place = if name == PYCACHE {
+                    " in it or any parent"
+                } else {
+                    ""
+                };
+                return Some(Why::NearMiss(format!(
+                    "artifact without its project marker ({} not found{place})",
+                    markers.join(" or ")
+                )));
+            }
+        }
+
+        // A CACHEDIR.TAG dir: found by the walk, or as a direct child of ~/.cache.
+        let in_cache = parent == ctx.home.join(".cache");
+        let reached = in_cache
+            || root.is_some_and(|r| {
+                let depth = parent.strip_prefix(r).map_or(0, |rel| rel.iter().count());
+                enters(name, depth)
+                    && unreached(r, parent, cfg.max_depth, &ecos, ctx.home).is_none()
+            });
+        if !reached {
+            return Some(Why::NearMiss(
+                "CACHEDIR.TAG cache the artifacts walk doesn't reach".into(),
+            ));
+        }
+        if tag_deny(ctx)(path) {
+            return Some(Why::NearMiss(
+                "CACHEDIR.TAG cache owned by another rule (a venv, the uv cache, a configured store or app cache)"
+                    .into(),
+            ));
+        }
+        Some(Why::Match(
+            "CACHEDIR.TAG cache directory; listed, never pre-selected".into(),
+        ))
     }
 }
 

@@ -49,11 +49,55 @@ pub struct ScanCtx<'a> {
     pub usage: Option<&'a crate::fsutil::usage::UsageIndex>,
 }
 
+/// What a category's rules say about one path, for `cleaner explain`.
+/// Ordered from least to most decisive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Why {
+    /// Something a rule looks for, but a structural test fails (no marker,
+    /// not a unit of the store, …).
+    NearMiss(String),
+    /// A rule's subject that fails only its age (or size) threshold.
+    NotYet(String),
+    /// A scan now would plan it (perhaps unticked); the text says how.
+    Match(String),
+}
+
+impl Why {
+    pub fn rank(&self) -> u8 {
+        match self {
+            Why::NearMiss(_) => 0,
+            Why::NotYet(_) => 1,
+            Why::Match(_) => 2,
+        }
+    }
+
+    /// The more decisive of the two; `a` on a tie.
+    pub fn best(a: Option<Why>, b: Option<Why>) -> Option<Why> {
+        match (a, b) {
+            (Some(a), Some(b)) if b.rank() > a.rank() => Some(b),
+            (Some(a), _) => Some(a),
+            (None, b) => b,
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        match self {
+            Why::NearMiss(s) | Why::NotYet(s) | Why::Match(s) => s,
+        }
+    }
+}
+
 pub trait Category {
     fn id(&self) -> &'static str;
     fn scan(&self, ctx: &ScanCtx, seen: &mut InodeSet) -> anyhow::Result<ScanOutput>;
     fn apply(&self, entry: &Entry, ctx: &ScanCtx) -> Outcome {
         apply_default(entry, ctx)
+    }
+    /// What this category's rules say about `path` (an existing, non-symlink
+    /// path that is not protected), ignoring whether the category is
+    /// enabled. Read-only. `None`: the category has nothing to say.
+    fn explain(&self, _path: &Path, _ctx: &ScanCtx) -> Option<Why> {
+        None
     }
 }
 

@@ -73,3 +73,41 @@ fn last_commit_time_some() {
     std::fs::create_dir_all(&plain).unwrap();
     assert_eq!(last_commit_time(&plain), None);
 }
+
+#[test]
+fn why_protected_names_the_protection() {
+    use cleaner::protect::Protection;
+    let home = TempDir::new().unwrap();
+    let h = home.path();
+    let prot = Protector::new(h, &["~/keep".into()]);
+    assert_eq!(
+        prot.why_protected(&h.join(".claude/x")),
+        Some(Protection::Inside {
+            root: h.join(".claude"),
+            builtin: true
+        })
+    );
+    assert_eq!(
+        prot.why_protected(&h.join("keep/a")),
+        Some(Protection::Inside {
+            root: h.join("keep"),
+            builtin: false
+        })
+    );
+    assert_eq!(
+        prot.why_protected(&h.join(".local/share")),
+        Some(Protection::Contains {
+            root: h.join(".local/share/atuin"),
+            builtin: true
+        })
+    );
+    assert_eq!(
+        prot.why_protected(&h.join("src/.git/objects")),
+        Some(Protection::Component(".git"))
+    );
+    assert_eq!(
+        prot.why_protected(&h.join("src/vendored/b")),
+        Some(Protection::Component("vendored"))
+    );
+    assert_eq!(prot.why_protected(&h.join("src/b")), None);
+}

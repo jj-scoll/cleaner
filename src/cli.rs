@@ -1,4 +1,5 @@
-//! The `cleaner` commands (spec §7.1): plan, show, apply, status, log, timer.
+//! The `cleaner` commands (spec §7.1): plan, show, apply, explain, status,
+//! log, timer.
 
 use anyhow::{Context, bail};
 use clap::{CommandFactory, Parser, Subcommand};
@@ -60,6 +61,16 @@ pub enum Cmd {
         #[arg(long)]
         yes: bool,
     },
+    /// Why a path is (or isn't) in the plan. Changes nothing.
+    Explain {
+        /// The file or folder to ask about.
+        path: PathBuf,
+        /// Plan id (default: the latest plan).
+        #[arg(long)]
+        plan: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Disk usage, the latest plan and the last run.
     Status {
         #[arg(long)]
@@ -109,6 +120,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         Some(Cmd::Plan { json, notify, .. }) => cmd_plan(json, notify),
         Some(Cmd::Show { plan, json, sort }) => cmd_show(plan, json, sort),
         Some(Cmd::Apply { plan, only, yes }) => cmd_apply(plan, &only, yes),
+        Some(Cmd::Explain { path, plan, json }) => cmd_explain(&path, plan, json),
         Some(Cmd::Status { json }) => cmd_status(json),
         Some(Cmd::Log { since, json }) => cmd_log(since, json),
         Some(Cmd::Timer { action }) => cmd_timer(action),
@@ -425,6 +437,106 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
     for (label, delta) in &report.freed_by_fs {
         let sign = if *delta < 0 { "-" } else { "" };
         println!("  {label}: {sign}{}", human_bytes(delta.unsigned_abs()));
+    }
+    Ok(0)
+}
+
+/// Read-only: loads the config and a plan, writes nothing (no default
+/// config, no shown-plan marker).
+fn cmd_explain(path: &std::path::Path, id: Option<String>, json: bool) -> anyhow::Result<i32> {
+    use cleaner::explain::{Status, explain};
+    let paths = Paths::from_env()?;
+    let config = load_config(&paths)?;
+    let plan = match id {
+        Some(id) => Some(resolve_plan(&paths, Some(id))?.1),
+        None => match Plan::latest(&paths.plans_dir)? {
+            Some(p) => Some(Plan::load(&p)?),
+            None => None,
+        },
+    };
+    let protector = cleaner::protect::Protector::new(&paths.home, &config.protect);
+    let ctx = cleaner::category::ScanCtx {
+        home: &paths.home,
+        now: now(),
+        config: &config,
+        protector: &protector,
+        tools: &cleaner::tool::SystemRunner,
+        euid: rustix::process::geteuid().as_raw(),
+        usage: None,
+    };
+    let e = explain(path, plan.as_ref(), &ctx);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&e)?);
+        return Ok(0);
+    }
+    println!("{}", e.path);
+    if let Some(target) = &e.symlink_target {
+        println!("  is a symlink to {target}; cleaner never follows it");
+    }
+    let plan_id = e.plan.as_deref().unwrap_or("");
+    let entry_id = e.entry.as_ref().map_or("", |x| x.id.as_str());
+    let within = e.entry.as_ref().map_or("", |x| x.path.as_str());
+    match e.status {
+        Status::Planned => println!("  planned: entry {entry_id} of plan {plan_id}"),
+        Status::InsidePlanned => {
+            println!("  inside planned item {within}: entry {entry_id} of plan {plan_id}")
+        }
+        Status::ReportOnly if within == e.path => {
+            println!("  report only (listed, never deleted): entry {entry_id} of plan {plan_id}")
+        }
+        Status::ReportOnly => println!(
+            "  inside report-only item {within} (listed, never deleted): entry {entry_id} of plan {plan_id}"
+        ),
+        Status::Skipped => {
+            let s = e.skip.as_ref();
+            let (cat, title) = s.map_or(("", ""), |s| (s.category.as_str(), s.title.as_str()));
+            println!(
+                "  skipped by {cat} in plan {plan_id} ({title}): {}",
+                e.reason
+            );
+        }
+        Status::WouldBePlanned => {
+            let cat = e.category.as_deref().unwrap_or("");
+            match &e.plan {
+                Some(id) => println!(
+                    "  not in plan {id}, but {cat} would plan it now: {}",
+                    e.reason
+                ),
+                None => println!("  no plan yet; {cat} would plan it: {}", e.reason),
+            }
+        }
+        Status::NotPlanned if e.entry.is_some() => {
+            println!(
+                "  not planned: inside store-rule row {within} (entry {entry_id} of plan {plan_id}), but its rule doesn't match it now: {}",
+                e.reason
+            );
+            if let Some(x) = &e.entry {
+                println!("  rule:         {}", x.rule);
+            }
+            return Ok(0);
+        }
+        Status::NotPlanned | Status::Missing => {
+            if e.plan.is_none() {
+                println!("  no plan yet; checked against the rules now");
+            }
+            let by = e
+                .category
+                .as_ref()
+                .map_or(String::new(), |c| format!(" ({c})"));
+            println!("  not planned{by}: {}", e.reason);
+        }
+    }
+    if let Some(x) = &e.entry {
+        println!("  category:     {}", x.category);
+        println!("  title:        {}", x.title);
+        println!("  size:         {}", human_bytes(x.bytes));
+        println!("  reason:       {}", x.reason);
+        let sel = if x.selected { "yes" } else { "no" };
+        println!("  pre-selected: {sel}");
+        if !x.selected && x.reason != e.reason {
+            println!("  not pre-selected because: {}", e.reason);
+        }
+        println!("  rule:         {}", x.rule);
     }
     Ok(0)
 }

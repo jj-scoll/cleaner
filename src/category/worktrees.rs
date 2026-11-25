@@ -510,6 +510,44 @@ impl Category for Worktrees {
         ID
     }
 
+    /// A linked worktree (`.git` is a file), judged by the scan's `verdict`
+    /// and idle rule. Orphaned worktree dirs aren't explained.
+    fn explain(&self, path: &Path, ctx: &ScanCtx) -> Option<crate::category::Why> {
+        use crate::category::Why;
+        if !path.join(".git").is_file() {
+            return None;
+        }
+        let real = std::fs::canonicalize(path).ok()?;
+        let Some(list) = git::worktree_list(&real) else {
+            return Some(Why::NearMiss(
+                "linked worktree, but git can't list its repository".into(),
+            ));
+        };
+        let main = &list[0].path;
+        let info = list[1..].iter().find(|w| w.path == real)?;
+        let pats = artifact_patterns();
+        Some(match verdict(main, info, &pats) {
+            Verdict::Finished(why) => {
+                let newest = newest_mtime(&real, &pats);
+                let idle = ctx.now - newest.max(git::last_commit_time(&real).unwrap_or(0));
+                let days = plural(idle.max(0) / 86_400, "day");
+                let need = ctx.config.worktrees.idle_days;
+                if idle > need as i64 * 86_400 {
+                    Why::Match(format!("finished worktree: {why}; idle {days}"))
+                } else {
+                    Why::Match(format!(
+                        "finished worktree ({why}), listed but not pre-selected: untouched for {days}; rule needs {need}"
+                    ))
+                }
+            }
+            Verdict::NotFinished => Why::NearMiss(
+                "linked worktree that isn't finished (branch not merged into the default branch, upstream not gone)"
+                    .into(),
+            ),
+            Verdict::Skip(reason) => Why::NearMiss(format!("linked worktree: {reason}")),
+        })
+    }
+
     fn scan(&self, ctx: &ScanCtx, seen: &mut InodeSet) -> anyhow::Result<ScanOutput> {
         let cfg = &ctx.config.worktrees;
         let mut out = ScanOutput::default();

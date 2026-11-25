@@ -2,6 +2,7 @@ pub mod category;
 pub mod config;
 pub mod disk;
 pub mod engine;
+pub mod explain;
 pub mod fmt;
 pub mod fsutil;
 pub mod git;

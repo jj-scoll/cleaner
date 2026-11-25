@@ -17,6 +17,17 @@ pub struct Protector {
     roots: Vec<PathBuf>,
 }
 
+/// Why a path is protected (see [`Protector::why_protected`]).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Protection {
+    /// A `vendored` or `.git` path component.
+    Component(&'static str),
+    /// At or inside a protected root; `builtin` unless from the user's list.
+    Inside { root: PathBuf, builtin: bool },
+    /// Contains a protected root: deleting the path would delete it.
+    Contains { root: PathBuf, builtin: bool },
+}
+
 /// `~` and `~/…` become `home`-relative; anything else is taken literally (no glob).
 fn tilde(entry: &str, home: &Path) -> PathBuf {
     if entry == "~" {
@@ -43,13 +54,34 @@ impl Protector {
     /// True if `p` is inside a protected root, contains one (deleting `p`
     /// would delete it), or has a `vendored` or `.git` component.
     pub fn is_protected(&self, p: &Path) -> bool {
-        let bad_component = p.components().any(
-            |c| matches!(c, Component::Normal(n) if PROTECTED_COMPONENTS.iter().any(|b| n == *b)),
-        );
-        bad_component
-            || self
-                .roots
-                .iter()
-                .any(|r| p.starts_with(r) || r.starts_with(p))
+        self.why_protected(p).is_some()
+    }
+
+    /// Why `p` is protected, or `None`: a bad component first, then the
+    /// first root (built-ins before the user's) `p` is in or contains.
+    pub fn why_protected(&self, p: &Path) -> Option<Protection> {
+        for c in p.components() {
+            if let Component::Normal(n) = c
+                && let Some(b) = PROTECTED_COMPONENTS.iter().find(|b| n == **b)
+            {
+                return Some(Protection::Component(b));
+            }
+        }
+        self.roots.iter().enumerate().find_map(|(i, r)| {
+            let builtin = i < BUILTIN_PROTECTED.len();
+            if p.starts_with(r) {
+                Some(Protection::Inside {
+                    root: r.clone(),
+                    builtin,
+                })
+            } else if r.starts_with(p) {
+                Some(Protection::Contains {
+                    root: r.clone(),
+                    builtin,
+                })
+            } else {
+                None
+            }
+        })
     }
 }

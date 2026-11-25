@@ -95,6 +95,38 @@ impl Category for Trash {
         }
         Ok(out)
     }
+
+    /// A Trash payload (or something inside one) or its `.trashinfo`, judged
+    /// by the record's `DeletionDate` as `scan` does.
+    fn explain(&self, path: &Path, ctx: &ScanCtx) -> Option<crate::category::Why> {
+        use crate::category::Why;
+        let trash = ctx.home.join(".local/share/Trash");
+        let name = if let Ok(rel) = path.strip_prefix(trash.join("files")) {
+            rel.components().next()?.as_os_str().to_os_string()
+        } else {
+            let rel = path.strip_prefix(trash.join("info")).ok()?;
+            let file = rel.as_os_str().as_bytes().strip_suffix(b".trashinfo")?;
+            OsStr::from_bytes(file).to_os_string()
+        };
+        let mut info = name.clone();
+        info.push(".trashinfo");
+        let Some((date, deleted_at)) = deletion_date(&trash.join("info").join(info)) else {
+            return Some(Why::NearMiss(
+                "in Trash without a readable .trashinfo".into(),
+            ));
+        };
+        let max = ctx.config.trash.max_age_days;
+        let days = (ctx.now - deleted_at).max(0) / 86_400;
+        let cutoff = ctx.now.saturating_sub(max.saturating_mul(86_400) as i64);
+        Some(if deleted_at >= cutoff {
+            Why::NotYet(format!(
+                "in Trash for {}; rule needs {max}",
+                crate::fmt::plural(days, "day")
+            ))
+        } else {
+            Why::Match(format!("in Trash since {date} (older than {max} days)"))
+        })
+    }
 }
 
 /// `DeletionDate=` (local time, `YYYY-MM-DDTHH:MM:SS`) as its date for

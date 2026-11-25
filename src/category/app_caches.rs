@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::category::store::{StoreRule, Unit, apply_rule, evaluate_as, foreign_skip};
 use crate::category::{Category, Outcome, ScanCtx, ScanOutput, apply_default};
-use crate::config::AppCfg;
+use crate::config::{AppCachesCfg, AppCfg};
 use crate::fsutil::measure::InodeSet;
 use crate::plan::{Entry, EntryKind};
 use crate::procs::app_running;
@@ -44,28 +44,9 @@ impl Category for AppCaches {
                         app.name
                     )
                 });
-                let main: Vec<String> = cfg
-                    .cache_dirs
-                    .iter()
-                    .filter(|n| !OWN_ROW.iter().any(|(o, _)| o == n))
-                    .cloned()
-                    .collect();
-                let mut rules = vec![(main, None)];
-                for (name, label) in OWN_ROW {
-                    if cfg.cache_dirs.iter().any(|n| n == name) {
-                        rules.push((vec![name.to_string()], Some(*label)));
-                    }
-                }
                 // At most one foreign-owner Skip per root, whichever rule finds it.
                 let mut skipped = false;
-                for (names, label) in rules {
-                    let rule = StoreRule {
-                        root: root.clone(),
-                        max_age_days: 0,
-                        unit: Unit::DirsNamed(names),
-                        glob: None,
-                        min_bytes: None,
-                    };
+                for (rule, label) in rules(cfg, &root) {
                     let found = evaluate_as(&rule, ctx.now, ctx.protector, seen, ctx.euid);
                     if !skipped && let Some(s) = foreign_skip(ID, &rule, &found, ctx.home) {
                         out.skipped.push(s);
@@ -127,6 +108,53 @@ impl Category for AppCaches {
         }
         apply_rule(rule, ctx)
     }
+
+    fn explain(&self, path: &Path, ctx: &ScanCtx) -> Option<crate::category::Why> {
+        let cfg = &ctx.config.app_caches;
+        let mut best = None;
+        for root in cfg
+            .apps
+            .iter()
+            .flat_map(|a| &a.dirs)
+            .flat_map(|d| crate::paths::expand(d, ctx.home))
+        {
+            for (rule, _) in rules(cfg, &root) {
+                let why = crate::category::store::explain_rule(&rule, path, ctx);
+                best = crate::category::Why::best(best, why);
+            }
+        }
+        best
+    }
+}
+
+/// The store rules for one app dir: the main cache dirs, then each
+/// [`OWN_ROW`] dir that is configured, with its label.
+fn rules(cfg: &AppCachesCfg, root: &Path) -> Vec<(StoreRule, Option<&'static str>)> {
+    let main: Vec<String> = cfg
+        .cache_dirs
+        .iter()
+        .filter(|n| !OWN_ROW.iter().any(|(o, _)| o == n))
+        .cloned()
+        .collect();
+    let mut named = vec![(main, None)];
+    for (name, label) in OWN_ROW {
+        if cfg.cache_dirs.iter().any(|n| n == name) {
+            named.push((vec![name.to_string()], Some(*label)));
+        }
+    }
+    named
+        .into_iter()
+        .map(|(names, label)| {
+            let rule = StoreRule {
+                root: root.to_path_buf(),
+                max_age_days: 0,
+                unit: Unit::DirsNamed(names),
+                glob: None,
+                min_bytes: None,
+            };
+            (rule, label)
+        })
+        .collect()
 }
 
 /// The app one of whose `dirs` expands to `root`.

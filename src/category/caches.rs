@@ -107,6 +107,11 @@ impl Category for Caches {
             _ => apply_default(entry, ctx),
         }
     }
+
+    /// The store rules only; keep-newest dirs and tool operations aren't explained.
+    fn explain(&self, path: &Path, ctx: &ScanCtx) -> Option<crate::category::Why> {
+        crate::category::store::explain_stores(&ctx.config.caches.stores, path, ctx)
+    }
 }
 
 const UV_TITLE: &str = "uv cache prune";
