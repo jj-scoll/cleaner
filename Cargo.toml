@@ -1,6 +1,6 @@
 [package]
 name = "cleaner"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Approve-first disk cleanup for Linux desktops: builds a plan, deletes only what you approve"
 license = "MIT"
