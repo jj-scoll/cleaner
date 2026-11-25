@@ -69,7 +69,15 @@ These hold on **every** deletion path, and each has tests:
 - **Read-only views stay read-only.** The disk map, the large-and-old report and the low-space check have no path to deletion.
 - **Gentle on the machine.** Scans run at `Nice=10` with idle IO priority, off the GUI thread.
 
-There is no trash and no undo: approved items are deleted for real. **The review step is the safety net**, so read the plan.
+Deletes are immediate and permanent unless you turn on the holding area (`[hold] enabled = true`, or Settings → Holding area). **The review step is the safety net**, so read the plan.
+
+With holding on, apply moves files and folders into `~/.local/share/cleaner/hold` instead of deleting them, and keeps them for `days` (7 by default). `cleaner hold restore <id|path>` puts an entry back; `cleaner hold purge` deletes expired entries now (`--all` for everything). Expired entries are otherwise purged at the start of your next apply, never by the timer. Holding frees **no** space until then. Its limits:
+
+- Only files and folders are held. Docker objects, Nix generations and tool commands are still permanent, and the confirmation says which is which.
+- While holding is on, entries on another filesystem than the holding area (normally your home's) are skipped: not held, and not deleted.
+- Holding moves with a same-filesystem `renameat2(RENAME_NOREPLACE)`: it never copies, and restore never replaces what is at the original path now.
+- There's no GUI page for held items yet; use `cleaner hold list`.
+- `cleaner status` and the run history don't count held entries; `cleaner log` lists them.
 
 ## Features
 
