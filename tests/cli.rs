@@ -124,6 +124,19 @@ fn cli_no_args_without_display_prints_help() {
 }
 
 #[test]
+fn cli_review_without_a_terminal_points_at_show_and_apply() {
+    let env = Env::new();
+    // assert_cmd pipes stdout, so it is not a TTY. The check comes before
+    // anything else: no plan is needed to see it.
+    env.cmd(&["review"])
+        .assert()
+        .code(1)
+        .stderr(contains("cleaner review needs a terminal"))
+        .stderr(contains("cleaner show"))
+        .stderr(contains("cleaner apply"));
+}
+
+#[test]
 fn cli_plan_then_show() {
     let env = Env::new();
     env.cmd(&["plan"])

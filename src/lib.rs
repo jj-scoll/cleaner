@@ -22,6 +22,7 @@ pub mod stats;
 pub mod sys;
 pub mod timer;
 pub mod tool;
+pub mod tui;
 pub mod view;
 pub mod walk;
 

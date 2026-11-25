@@ -1,7 +1,7 @@
 use cleaner::category::store::{StoreRule, Unit};
 use cleaner::object::Operation;
 use cleaner::plan::{Entry, EntryKind, Fingerprint, Plan, Skip, Target};
-use cleaner::view::review::{Confirm, ReviewModel, Sort};
+use cleaner::view::review::{Confirm, ReviewModel, Sort, entry_line};
 
 fn entry(id: &str, category: &str, bytes: u64, selected: bool) -> Entry {
     Entry {
@@ -392,4 +392,25 @@ fn sort_is_remembered_in_the_state_dir() {
         Sort::Size,
         "an unknown value falls back"
     );
+}
+
+#[test]
+fn entry_line_is_the_show_row() {
+    let mut e = entry("trash:0", "trash", 2048, true);
+    e.permanent = true;
+    assert_eq!(
+        entry_line(&e, true),
+        "[x]    2.0 KiB  title trash:0  (because) [permanent]"
+    );
+    assert_eq!(
+        entry_line(&store_entry("caches:0", 1024), false),
+        "[ ]   ~1.0 KiB  title caches:0  (because) [estimate]"
+    );
+}
+
+#[test]
+fn sort_next_cycles_size_name_age() {
+    assert_eq!(Sort::Size.next(), Sort::Name);
+    assert_eq!(Sort::Name.next(), Sort::Age);
+    assert_eq!(Sort::Age.next(), Sort::Size);
 }

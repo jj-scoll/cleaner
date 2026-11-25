@@ -75,6 +75,15 @@ impl Sort {
         }
     }
 
+    /// The order after this one: size, name, age, then size again.
+    pub fn next(self) -> Sort {
+        match self {
+            Sort::Size => Sort::Name,
+            Sort::Name => Sort::Age,
+            Sort::Age => Sort::Size,
+        }
+    }
+
     /// `size`, `name` or `age`: the `--sort` value and the saved one.
     pub fn parse(s: &str) -> Option<Sort> {
         Sort::ALL
@@ -132,6 +141,25 @@ fn row(e: &Entry, selected: bool) -> Row {
         permanent: e.permanent,
         estimate: e.is_estimate(),
     }
+}
+
+/// A `cleaner show` row: `{mark} {size:>10}  {title}  ({reason})`, then
+/// ` [permanent]` and ` [estimate]` as they apply (an estimate's size gets a
+/// `~`). The note, if any, is not included.
+pub fn row_line(mark: &str, r: &Row) -> String {
+    let perm = if r.permanent { " [permanent]" } else { "" };
+    let (size, est) = if r.estimate {
+        (format!("~{}", human_bytes(r.bytes)), " [estimate]")
+    } else {
+        (human_bytes(r.bytes), "")
+    };
+    format!("{mark} {size:>10}  {}  ({}){perm}{est}", r.title, r.reason)
+}
+
+/// `row_line` for a plan entry: `[x]` when `selected`, else `[ ]`.
+pub fn entry_line(e: &Entry, selected: bool) -> String {
+    let mark = if selected { "[x]" } else { "[ ]" };
+    row_line(mark, &row(e, selected))
 }
 
 fn in_filter(category: &str, filter: Option<&str>) -> bool {

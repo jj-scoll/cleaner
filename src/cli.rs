@@ -1,5 +1,5 @@
-//! The `cleaner` commands (spec §7.1): plan, show, apply, explain, status,
-//! log, timer.
+//! The `cleaner` commands (spec §7.1): plan, show, review, apply, explain,
+//! status, log, stats, timer.
 
 use anyhow::{Context, bail};
 use clap::{CommandFactory, Parser, Subcommand};
@@ -15,7 +15,7 @@ use cleaner::notify::{DbusNotifier, gui_launch_command, notify_if_worth_it};
 use cleaner::paths::Paths;
 use cleaner::plan::{Entry, Plan};
 use cleaner::timer;
-use cleaner::view::review::Sort;
+use cleaner::view::review::{ReviewModel, Sort, entry_line};
 use cleaner::view::{category_label, category_order};
 
 #[derive(Parser)]
@@ -49,6 +49,11 @@ pub enum Cmd {
         /// (least recently touched first).
         #[arg(long, default_value = "size", value_parser = parse_sort)]
         sort: Sort,
+    },
+    /// Tick a plan's entries in the terminal, then apply them (no display needed).
+    Review {
+        /// Plan id (default: the latest plan).
+        plan: Option<String>,
     },
     /// Delete the selected entries of a plan.
     Apply {
@@ -128,6 +133,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         Some(Cmd::Plan { if_low: true, .. }) => cmd_if_low(),
         Some(Cmd::Plan { json, notify, .. }) => cmd_plan(json, notify),
         Some(Cmd::Show { plan, json, sort }) => cmd_show(plan, json, sort),
+        Some(Cmd::Review { plan }) => cmd_review(plan),
         Some(Cmd::Apply { plan, only, yes }) => cmd_apply(plan, &only, yes),
         Some(Cmd::Explain { path, plan, json }) => cmd_explain(&path, plan, json),
         Some(Cmd::Status { json }) => cmd_status(json),
@@ -308,17 +314,7 @@ fn cmd_if_low() -> anyhow::Result<i32> {
 }
 
 fn print_entry(e: &Entry) {
-    let mark = if e.selected { "[x]" } else { "[ ]" };
-    let perm = if e.permanent { " [permanent]" } else { "" };
-    let (size, est) = if e.is_estimate() {
-        (format!("~{}", human_bytes(e.bytes)), " [estimate]")
-    } else {
-        (human_bytes(e.bytes), "")
-    };
-    println!(
-        "  {mark} {size:>10}  {}  ({}){perm}{est}",
-        e.title, e.reason
-    );
+    println!("  {}", entry_line(e, e.selected));
     if let Some(note) = &e.note {
         println!("      note: {note}");
     }
@@ -427,7 +423,41 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
 
     let ids: Vec<String> = chosen.iter().map(|e| e.id.clone()).collect();
     let report = apply_selected(&paths, &config, &plan, &ids, &mut |_| {})?;
+    print_report(&plan, &report);
+    Ok(0)
+}
 
+/// `review`: the GUI's review page in the terminal. Like the GUI, it marks
+/// the plan shown, starts from its own selection and the saved sort, leaves
+/// the plan file as it is, and hands the ticked ids to `apply_selected`.
+fn cmd_review(id: Option<String>) -> anyhow::Result<i32> {
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        bail!(
+            "cleaner review needs a terminal (stdout is not a TTY); \
+             use `cleaner show` to print the plan and `cleaner apply` to apply it"
+        );
+    }
+    let paths = Paths::from_env()?;
+    let config = load_config(&paths)?;
+    let (_, plan) = resolve_plan(&paths, id)?;
+    Plan::mark_shown(&paths.state_dir, &plan.id)?;
+    let mut model = ReviewModel::new(plan.clone());
+    model.set_sort(Sort::load(&paths.state_dir));
+    let mut app = cleaner::tui::App::new(model);
+    let Some(ids) = cleaner::tui::run(&mut app, &paths.state_dir)? else {
+        eprintln!("Nothing deleted.");
+        return Ok(0);
+    };
+    println!("Plan {} (created {})", plan.id, local_time(plan.created));
+    cleaner::sys::lower_priority();
+    let report = apply_selected(&paths, &config, &plan, &ids, &mut |_| {})?;
+    print_report(&plan, &report);
+    Ok(0)
+}
+
+/// Each entry's outcome, then the free space each filesystem gained.
+fn print_report(plan: &Plan, report: &cleaner::engine::RunReport) {
     let by_id: HashMap<&str, &Entry> = plan.entries.iter().map(|e| (e.id.as_str(), e)).collect();
     for (id, outcome) in &report.results {
         let e = by_id[id.as_str()];
@@ -448,7 +478,6 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
         let sign = if *delta < 0 { "-" } else { "" };
         println!("  {label}: {sign}{}", human_bytes(delta.unsigned_abs()));
     }
-    Ok(0)
 }
 
 /// Read-only: loads the config and a plan, writes nothing (no default
