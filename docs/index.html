@@ -3,322 +3,521 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cleaner</title>
-<meta name="description" content="Approve-first disk cleanup for Linux desktops. cleaner builds a plan of what can go, and deletes only what you approve.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231C2B3A'/%3E%3Crect x='3' y='4' width='10' height='3' fill='%23F3DD4E'/%3E%3Crect x='3' y='9' width='6' height='3' fill='%23E8EDF1'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<title>cleaner: approve-first disk cleanup for Linux</title>
+<meta name="description" content="cleaner finds build artifacts, tool caches, stale worktrees, Docker leftovers and old Nix generations, shows you a plan, and deletes only what you approve.">
+<meta name="theme-color" content="#0F201A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="canonical" href="https://jj-scoll.github.io/cleaner/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="cleaner">
+<meta property="og:title" content="cleaner: delete only what you approve">
+<meta property="og:description" content="Approve-first disk cleanup for Linux desktops. A plan of what can go, a review, and nothing deleted without your say-so.">
+<meta property="og:url" content="https://jj-scoll.github.io/cleaner/">
+<meta property="og:image" content="https://jj-scoll.github.io/cleaner/assets/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The cleaner logo, the line 'Delete only what you approve.', and a plan with three ticked items and one left unticked.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="cleaner: delete only what you approve">
+<meta name="twitter:description" content="Approve-first disk cleanup for Linux desktops.">
+<meta name="twitter:image" content="https://jj-scoll.github.io/cleaner/assets/social-preview.png">
+<link rel="preload" href="assets/fonts/recursive.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+@font-face {
+  font-family: "Recursive";
+  src: url("assets/fonts/recursive.woff2") format("woff2");
+  font-weight: 300 900;
+  font-display: swap;
+}
 :root {
-  --paper: #E8EDF1;
-  --sheet: #F6F8FA;
-  --ink: #1C2B3A;
-  --ink-soft: #46586B;
-  --muted: #7E8C9A;
-  --rule: #C9D3DC;
-  --mark: #F3DD4E;
-  --mark-ink: #1C2B3A;
-  --stamp: #B8392B;
-  --ok: #2E6B4F;
-  --code-bg: #1C2B3A;
-  --code-ink: #E8EDF1;
-  --focus: #2D63C8;
+  color-scheme: dark;
+  --night: #0A1612;
+  --spruce: #0F201A;
+  --fir: #16302A;
+  --needle: #24443B;
+  --lichen: #94B3A6;
+  --frost: #E3EEE7;
+  --marigold: #F5B83D;
+  --rosehip: #F48C80;
+  --mono-stack: "Recursive", ui-monospace, "DejaVu Sans Mono", monospace;
+  --measure: 38rem;
+  --casl: 0;
+  --mono: 0;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #131C26;
-    --sheet: #1A2531;
-    --ink: #DCE4EB;
-    --ink-soft: #A9B6C3;
-    --muted: #6F7E8D;
-    --rule: #2C3A48;
-    --mark: #6B5E12;
-    --mark-ink: #FFF6C2;
-    --stamp: #E0715F;
-    --ok: #7CC4A0;
-    --code-bg: #0D141C;
-    --code-ink: #DCE4EB;
-    --focus: #8DB3FF;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #131C26; --sheet: #1A2531; --ink: #DCE4EB; --ink-soft: #A9B6C3;
-  --muted: #6F7E8D; --rule: #2C3A48; --mark: #6B5E12; --mark-ink: #FFF6C2;
-  --stamp: #E0715F; --ok: #7CC4A0; --code-bg: #0D141C; --code-ink: #DCE4EB; --focus: #8DB3FF;
-}
-
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+/* Recursive axes: elements set --casl/--mono (inherited); every element re-applies them. */
+* { box-sizing: border-box; font-variation-settings: "CASL" var(--casl), "MONO" var(--mono); }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 1rem; }
 body {
   margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: 400 1.0625rem/1.6 "Archivo", system-ui, sans-serif;
-  font-variation-settings: "wdth" 100;
+  background: var(--spruce);
+  color: var(--frost);
+  font: 420 1.0625rem/1.65 "Recursive", system-ui, sans-serif;
 }
-a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-a:hover { text-decoration-thickness: 2px; }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
-code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
-code { font-size: .9em; }
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; text-decoration-color: var(--marigold); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+a:hover { color: var(--marigold); }
+:focus-visible { outline: 3px solid var(--marigold); outline-offset: 3px; border-radius: 4px; }
+code, pre, kbd, .mono { font-family: var(--mono-stack); --mono: 1; }
+code { font-size: .9em; font-weight: 450; }
+p code, li code, dd code, td code { color: #F2E7C9; }
+::selection { background: var(--marigold); color: var(--spruce); }
 
-.wrap { max-width: 68rem; margin: 0 auto; padding: 0 16px; }
-@media (min-width: 40rem) { .wrap { padding: 0 2rem; } }
+.skip { position: absolute; left: 1rem; top: -4rem; background: var(--marigold); color: var(--spruce); padding: .5rem 1rem; border-radius: 0 0 8px 8px; font-weight: 700; z-index: 2; }
+.skip:focus { top: 0; }
 
-/* top bar */
-.bar { display: flex; justify-content: space-between; align-items: baseline; padding-block: 1.25rem; }
-.bar .name { font-weight: 800; font-variation-settings: "wdth" 125; font-size: 1.125rem; text-decoration: none; }
-.bar nav { display: flex; gap: 1.25rem; font-size: .95rem; }
+.wrap { max-width: 74rem; margin: 0 auto; padding-inline: 16px; }
+@media (min-width: 40rem) { .wrap { padding-inline: 2rem; } }
 
-/* hero */
-.hero { display: grid; gap: 2.5rem; padding-block: 2.5rem 4rem; align-items: start; }
-@media (min-width: 60rem) { .hero { grid-template-columns: 1fr 1.05fr; gap: 4rem; padding-top: 4rem; } }
-h1 {
-  font-weight: 900;
-  font-variation-settings: "wdth" 125;
-  font-size: clamp(2.5rem, 7vw, 4.5rem);
-  line-height: .98;
-  letter-spacing: -.01em;
-  margin: 0 0 1.5rem;
-}
-.lede { font-size: 1.1875rem; color: var(--ink-soft); max-width: 34rem; margin: 0 0 2rem; }
-.actions { display: flex; flex-wrap: wrap; gap: .75rem; }
-.btn {
-  display: inline-block; padding: .7rem 1.2rem; border-radius: 6px;
-  font: inherit; font-weight: 700; font-size: 1rem; text-decoration: none; cursor: pointer;
-  border: 2px solid var(--ink);
-}
-.btn.primary { background: var(--ink); color: var(--paper); }
-.btn.secondary { background: transparent; color: var(--ink); }
+/* Header */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.25rem; }
+.top .brand { display: block; line-height: 0; border-radius: 10px; }
+.top .brand img { width: 9.5rem; height: auto; }
+.top nav ul { display: flex; gap: 1.5rem; list-style: none; margin: 0; padding: 0; font-weight: 550; font-size: .975rem; }
+.top nav a { text-decoration: none; }
+.top nav a:hover { text-decoration: underline; text-decoration-color: var(--marigold); }
+@media (max-width: 47.99rem) { .top nav .opt { display: none; } }
 
-/* the plan demo */
-.plan {
-  background: var(--sheet);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  padding: 1.25rem 1.25rem 1rem;
-  box-shadow: 0 1px 0 var(--rule), 0 18px 40px -28px rgba(28, 43, 58, .45);
-}
-.plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: .75rem; }
-.plan-head h2 { font-size: 1rem; margin: 0; font-weight: 700; }
-.plan-head .id { font-size: .8rem; color: var(--muted); }
-.rows { list-style: none; margin: 0; padding: 0; }
-.row {
-  display: grid; grid-template-columns: 1.6rem 1fr auto; gap: .25rem .5rem; align-items: center;
-  padding: .55rem .5rem; border-radius: 4px; margin: 0 -.5rem;
-}
-.row + .row { border-top: 1px solid var(--rule); }
-.row label { display: contents; cursor: pointer; }
-.row input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--ink); cursor: pointer; }
-.row .what { min-width: 0; }
-.row .cat { font-weight: 700; }
-.row .why { display: block; font-size: .875rem; color: var(--ink-soft); line-height: 1.4; }
-.row .size { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .9rem; text-align: right; white-space: nowrap; }
-.row.on .cat { background: linear-gradient(transparent 12%, var(--mark) 12%, var(--mark) 88%, transparent 88%); color: var(--mark-ink); padding: 0 .2em; margin: 0 -.2em; }
-.row.report { color: var(--muted); }
-.row.report .why, .row.report .size { color: var(--muted); }
-.row.report input { cursor: not-allowed; }
-.tag { font-size: .75rem; font-weight: 700; color: var(--stamp); border: 1.5px solid currentColor; border-radius: 3px; padding: 0 .3em; margin-left: .35rem; vertical-align: 1px; }
-.result { grid-column: 2 / 4; font-size: .875rem; font-family: "JetBrains Mono", ui-monospace, monospace; }
-.result.done { color: var(--ok); }
-.result.skip { color: var(--stamp); }
-.result:empty { display: none; }
-
-.plan-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; border-top: 2px solid var(--ink); margin-top: .5rem; padding-top: .9rem; }
-.total { font-weight: 800; font-size: 1.125rem; }
-.total .mono { font-weight: 600; }
-.plan-foot .btn { padding: .5rem 1rem; }
-.btn[disabled] { opacity: .45; cursor: not-allowed; }
-.note { font-size: .85rem; color: var(--ink-soft); margin: .75rem 0 0; min-height: 1.4em; }
-
-/* sections */
-section { padding: 3.5rem 0; border-top: 1px solid var(--rule); }
-h2.sec {
-  font-weight: 800; font-variation-settings: "wdth" 115;
-  font-size: clamp(1.6rem, 3.5vw, 2.25rem); line-height: 1.1; margin: 0 0 1.5rem; max-width: 40rem;
-}
-.prose { max-width: 40rem; }
+/* Type */
+h1, h2, h3 { --casl: 1; font-weight: 800; line-height: 1.02; letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(2.75rem, 11.5vw, 6rem); line-height: .94; letter-spacing: -.03em; }
+h2 { font-size: clamp(2rem, 4.6vw, 3.25rem); margin-bottom: 1.25rem; max-width: 18ch; }
+h3 { font-size: 1.25rem; letter-spacing: -.01em; line-height: 1.2; }
+.lede { font-size: clamp(1.125rem, 1.6vw, 1.3125rem); line-height: 1.55; max-width: var(--measure); margin: 0; }
+.dim { color: var(--lichen); }
+.prose { max-width: var(--measure); }
 .prose p { margin: 0 0 1rem; }
 
-.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: grid; gap: 1.5rem; }
-@media (min-width: 52rem) { .steps { grid-template-columns: repeat(5, 1fr); gap: 1.25rem; } }
-.steps li { counter-increment: s; border-top: 3px solid var(--ink); padding-top: .75rem; }
-.steps li::before { content: counter(s); font-weight: 900; font-variation-settings: "wdth" 125; font-size: 1.75rem; line-height: 1; display: block; margin-bottom: .4rem; }
-.steps h3 { font-size: 1.0625rem; margin: 0 0 .3rem; }
-.steps p { margin: 0; font-size: .95rem; color: var(--ink-soft); }
-
-.finds { display: grid; gap: 0; margin: 0; max-width: 52rem; }
-.finds > div { display: grid; gap: .2rem 2rem; padding: .9rem 0; border-bottom: 1px solid var(--rule); }
-@media (min-width: 44rem) { .finds > div { grid-template-columns: 13rem 1fr; } }
-.finds dt { font-weight: 700; }
-.finds dd { margin: 0; color: var(--ink-soft); }
-.finds dd strong { color: var(--ink); font-weight: 600; }
-
-.safety { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.25rem 2.5rem; max-width: 60rem; }
-@media (min-width: 48rem) { .safety { grid-template-columns: 1fr 1fr; } }
-.safety li { padding-left: 1.25rem; border-left: 3px solid var(--mark); }
-.safety b { display: block; }
-.safety span { color: var(--ink-soft); font-size: .95rem; }
-.warn { margin-top: 2rem; max-width: 40rem; font-weight: 600; }
-
-pre {
-  background: var(--code-bg); color: var(--code-ink);
-  padding: 1rem 1.1rem; border-radius: 8px; overflow-x: auto;
-  font-size: .875rem; line-height: 1.55; margin: 0 0 1.5rem; max-width: 46rem;
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  min-height: 3rem; padding: .7rem 1.4rem; border-radius: 999px;
+  font: inherit; font-weight: 700; font-size: 1rem; line-height: 1.2; text-decoration: none; cursor: pointer;
+  border: 2px solid var(--marigold);
 }
-pre .c { color: #8FA1B3; }
-h3.sub { font-size: 1.0625rem; margin: 1.75rem 0 .6rem; }
+.btn.primary { background: var(--marigold); color: var(--spruce); }
+.btn.primary:hover { background: #FFCB63; border-color: #FFCB63; color: var(--spruce); }
+.btn.ghost { background: transparent; color: var(--frost); border-color: var(--needle); }
+.btn.ghost:hover { border-color: var(--lichen); color: var(--frost); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
 
-footer { border-top: 1px solid var(--rule); padding: 2rem 0 3rem; font-size: .9rem; color: var(--ink-soft); }
-footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+/* Hero */
+.hero { padding-block: 3rem 2rem; display: grid; gap: 2rem; }
+@media (min-width: 62rem) {
+  .hero { grid-template-columns: 1.3fr 1fr; align-items: end; column-gap: 4rem; padding-top: 5rem; }
+}
+.hero > * { min-width: 0; }
+.hero-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.oneliner {
+  display: flex; align-items: center; gap: .5rem; max-width: 100%;
+  background: var(--night); border: 1px solid var(--needle); border-radius: 12px;
+  padding: .35rem .35rem .35rem 1rem; width: fit-content;
+}
+.oneliner code { min-width: 0; font-size: .9375rem; white-space: nowrap; overflow-x: auto; color: var(--frost); }
+.oneliner code::before { content: "$ "; color: var(--lichen); }
+.copy {
+  flex: none; font: inherit; font-size: .875rem; font-weight: 650; color: var(--frost); cursor: pointer;
+  background: var(--fir); border: 1px solid var(--needle); border-radius: 8px; padding: .4rem .75rem;
+}
+.copy:hover { border-color: var(--lichen); }
+
+.demo { margin: 1rem 0 0; }
+.screen {
+  background: var(--night); border: 1px solid var(--needle); border-radius: 18px;
+  padding: clamp(.5rem, 1.5vw, 1rem); overflow: hidden;
+}
+.screen img { border-radius: 8px; width: 100%; }
+figcaption { font-size: .875rem; color: var(--lichen); margin-top: .75rem; }
+
+/* Sections */
+section { padding-block: clamp(4rem, 9vw, 7rem) 0; }
+.sec-intro { display: grid; gap: .5rem 4rem; margin-bottom: 2.5rem; }
+@media (min-width: 62rem) { .sec-intro { grid-template-columns: 1fr 1fr; align-items: end; } .sec-intro h2 { margin: 0; } }
+
+/* How it works: the pipeline and the try-it plan */
+.how { display: grid; gap: 3rem; align-items: start; }
+@media (min-width: 62rem) { .how { grid-template-columns: 1fr 1.1fr; gap: 4rem; } }
+.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 2.75rem 1fr; column-gap: 1rem; position: relative; padding-bottom: 1.5rem; }
+.steps li::before {
+  content: counter(step); --casl: 1;
+  width: 2.75rem; height: 2.75rem; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: 1.125rem; background: var(--fir); border: 2px solid var(--needle); color: var(--frost);
+  grid-row: span 2;
+}
+.steps li:not(:last-child)::after { content: ""; position: absolute; left: calc(1.375rem - 1px); top: 2.75rem; bottom: 0; width: 2px; background: var(--needle); }
+.steps li.key::before { background: var(--marigold); border-color: var(--marigold); color: var(--spruce); }
+.steps h3 { padding-top: .55rem; }
+.steps p { margin: .25rem 0 0; color: var(--lichen); max-width: 32rem; }
+
+.plan { background: var(--fir); border: 1px solid var(--needle); border-radius: 22px; padding: 1.5rem; }
+@media (max-width: 30rem) { .plan { padding: 1.1rem; border-radius: 16px; } }
+.plan-head { margin-bottom: 1rem; }
+.plan-head h3 { --casl: 0; font-weight: 700; letter-spacing: 0; font-size: 1.2rem; }
+.plan-head p { margin: .2rem 0 0; color: var(--lichen); font-size: .9375rem; }
+.rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--needle); }
+.row { display: grid; grid-template-columns: 1.75rem 1fr auto; gap: .2rem .85rem; align-items: start; padding: .85rem 0; border-bottom: 1px solid var(--needle); }
+.row label { display: contents; cursor: pointer; }
+.row input {
+  appearance: none; -webkit-appearance: none; margin: .1rem 0 0; width: 1.5rem; height: 1.5rem; border-radius: 7px;
+  border: 2px solid var(--lichen); background: transparent; cursor: pointer; display: grid; place-items: center;
+}
+.row input:checked { background: var(--marigold); border-color: var(--marigold); }
+.row input:checked::after {
+  content: ""; width: .85rem; height: .85rem;
+  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7.5l3 3 6-7' fill='none' stroke='%230F201A' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.row input:disabled { cursor: not-allowed; border-style: dashed; border-color: var(--needle); }
+.row .what { min-width: 0; }
+.row .cat { font-weight: 650; }
+.row .why { display: block; font-size: .875rem; color: var(--lichen); line-height: 1.45; margin-top: .1rem; }
+.row .size { font-family: var(--mono-stack); --mono: 1; font-size: .9375rem; text-align: right; white-space: nowrap; padding-top: .05rem; }
+.row:not(.on) .cat, .row:not(.on) .size { color: var(--lichen); }
+.row.report .cat, .row.report .size { color: var(--lichen); }
+.tag { display: inline-block; font-size: .75rem; font-weight: 700; color: var(--rosehip); border: 1.5px solid currentColor; border-radius: 6px; padding: 0 .4em; margin-left: .4rem; vertical-align: 1px; line-height: 1.5; }
+.result { grid-column: 2 / 4; font-size: .8125rem; font-family: var(--mono-stack); --mono: 1; }
+.result.done { color: #8FCC8E; }
+.result.skip { color: var(--rosehip); }
+.result:empty { display: none; }
+.plan-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1rem; margin-top: 1.25rem; }
+.plan-foot .btn { flex: 1 1 auto; justify-content: center; }
+.note { font-size: .875rem; color: var(--lichen); margin: .9rem 0 0; min-height: 1.5em; }
+
+/* Safety rules */
+.rules { list-style: none; margin: 3.5rem 0 0; padding: 0; display: grid; gap: 1.75rem 3rem; }
+@media (min-width: 44rem) { .rules { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 70rem) { .rules { grid-template-columns: repeat(4, 1fr); } }
+.rules li { border-top: 2px solid var(--needle); padding-top: 1rem; }
+.rules b { display: block; font-weight: 700; margin-bottom: .3rem; line-height: 1.3; }
+.rules span { color: var(--lichen); font-size: .9375rem; line-height: 1.55; display: block; }
+.honest {
+  margin: 3rem 0 0; padding: 1.25rem 1.5rem; border-left: 4px solid var(--rosehip); background: var(--night);
+  border-radius: 0 14px 14px 0; max-width: 46rem;
+}
+.honest p { margin: 0; }
+.honest p + p { margin-top: .5rem; color: var(--lichen); font-size: .9375rem; }
+.honest strong { color: var(--rosehip); }
+
+/* What it finds */
+.legend { display: flex; flex-wrap: wrap; gap: .5rem 1.75rem; list-style: none; padding: 0; margin: 0 0 1.5rem; font-size: .9375rem; color: var(--lichen); }
+.legend li { display: flex; align-items: center; gap: .55rem; }
+.box { flex: none; width: 1.25rem; height: 1.25rem; border-radius: 6px; border: 2px solid var(--lichen); display: inline-grid; place-items: center; }
+.box.on { background: var(--marigold); border-color: var(--marigold); }
+.box.on::after {
+  content: ""; width: .7rem; height: .7rem;
+  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7.5l3 3 6-7' fill='none' stroke='%230F201A' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.box.rule { border-color: var(--marigold); }
+.box.rule::after { content: ""; width: .55rem; height: 2.5px; border-radius: 2px; background: var(--marigold); }
+.box.report { border-style: dashed; border-color: var(--lichen); opacity: .8; }
+.finds { margin: 0; border-top: 1px solid var(--needle); }
+.finds > div { display: grid; gap: .35rem; padding: 1.1rem 0; border-bottom: 1px solid var(--needle); }
+@media (min-width: 52rem) { .finds > div { grid-template-columns: 17rem 1fr 15rem; gap: 2rem; align-items: start; } }
+.finds dt { font-weight: 700; display: flex; gap: .85rem; align-items: flex-start; }
+.finds .box { margin-top: .2rem; }
+.finds dd { margin: 0; color: var(--lichen); font-size: .9688rem; }
+.finds dd.when { color: var(--frost); font-size: .9375rem; }
+@media (max-width: 51.99rem) { .finds dd { padding-left: 2.1rem; } }
+
+/* The app */
+.shots { display: grid; gap: 2rem; margin: 0; }
+@media (min-width: 52rem) { .shots { grid-template-columns: 1fr 1fr; } }
+.shots figure { margin: 0; }
+.shots .screen { padding: 0; border-radius: 14px; }
+.shots .screen img { border-radius: 0; }
+.features { list-style: none; padding: 0; margin: 2.5rem 0 0; display: grid; gap: 1.5rem 3rem; }
+@media (min-width: 52rem) { .features { grid-template-columns: repeat(3, 1fr); } }
+.features b { display: block; margin-bottom: .25rem; }
+.features span { color: var(--lichen); font-size: .9375rem; }
+
+/* Install */
+.install { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; max-width: 54rem; }
+.install h3 { margin: 2rem 0 .75rem; }
+.install .col > h3:first-child { margin-top: 0; }
+.install p { margin: 0 0 1rem; color: var(--lichen); max-width: var(--measure); }
+pre {
+  background: var(--night); color: var(--frost); border: 1px solid var(--needle);
+  padding: 1rem 1.15rem; border-radius: 14px; overflow-x: auto;
+  font-size: .8438rem; line-height: 1.65; margin: 0 0 1rem; tab-size: 2;
+}
+pre code { font-size: inherit; color: inherit; font-weight: 420; }
+pre .c { color: #8DA79C; }
+pre .p { color: var(--lichen); user-select: none; }
+details { margin-top: 2rem; max-width: 54rem; border: 1px solid var(--needle); border-radius: 14px; background: color-mix(in srgb, var(--fir) 50%, transparent); }
+summary { cursor: pointer; padding: 1rem 1.25rem; font-weight: 700; border-radius: 14px; }
+summary:hover { color: var(--marigold); }
+details[open] summary { border-bottom: 1px solid var(--needle); border-radius: 14px 14px 0 0; }
+.details-body { padding: 1.25rem; }
+.details-body h4 { margin: 1.25rem 0 .5rem; font-size: 1rem; }
+.details-body h4:first-child { margin-top: 0; }
+.units { width: 100%; border-collapse: collapse; font-size: .9375rem; margin: 0 0 1rem; }
+.units th, .units td { text-align: left; padding: .6rem .75rem .6rem 0; border-bottom: 1px solid var(--needle); vertical-align: top; }
+.units th { font-weight: 700; }
+.units td { color: var(--lichen); }
+.table-scroll { overflow-x: auto; }
+
+/* Footer */
+footer { margin-top: clamp(4rem, 9vw, 7rem); border-top: 1px solid var(--needle); background: var(--night); }
+footer .wrap { display: grid; gap: 1.5rem; padding-block: 2.5rem 3rem; }
+@media (min-width: 52rem) { footer .wrap { grid-template-columns: auto 1fr auto; align-items: center; gap: 3rem; } }
+footer img { width: 2.75rem; height: 2.75rem; }
+footer p { margin: 0; color: var(--lichen); font-size: .9375rem; max-width: 40rem; }
+footer ul { list-style: none; display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0; padding: 0; font-weight: 600; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .row { transition: background-color .2s; }
-  .row.working { background: color-mix(in srgb, var(--mark) 30%, transparent); }
+  .row { transition: background-color .25s; }
+  .row.working { background: color-mix(in srgb, var(--marigold) 14%, transparent); }
+  .btn, .copy { transition: background-color .15s, border-color .15s; }
 }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
-<header class="wrap bar">
-  <a class="name" href="./">cleaner</a>
+<header class="wrap top">
+  <a class="brand" href="./" aria-label="cleaner home"><img src="assets/logo-dark.svg" alt="cleaner" width="300" height="128"></a>
   <nav aria-label="Site">
-    <a href="#install">Install</a>
-    <a href="https://github.com/jj-scoll/cleaner">GitHub</a>
+    <ul>
+      <li class="opt"><a href="#how">How it works</a></li>
+      <li class="opt"><a href="#finds">What it finds</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="https://github.com/jj-scoll/cleaner">GitHub</a></li>
+    </ul>
   </nav>
 </header>
 
-<main>
-<div class="wrap hero">
-  <div>
+<main id="main">
+<div class="wrap">
+  <div class="hero">
     <h1>Delete only what you approve.</h1>
-    <p class="lede">cleaner finds the disk space a developer machine wastes on build artifacts, tool caches, stale worktrees, Docker leftovers and old Nix generations. It shows you a plan. Nothing goes until you say so.</p>
-    <div class="actions">
-      <a class="btn primary" href="#install">Download</a>
-      <a class="btn secondary" href="https://github.com/jj-scoll/cleaner">View source on GitHub</a>
+    <div class="hero-side">
+      <p class="lede">cleaner finds the disk space a developer machine wastes on build artifacts, tool caches, stale worktrees, Docker leftovers and old Nix generations. It shows you a plan, and deletes exactly what you tick. Nothing else.</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">Install</a>
+        <a class="btn ghost" href="https://github.com/jj-scoll/cleaner">View source on GitHub</a>
+      </div>
+      <div class="oneliner">
+        <code id="try">nix run github:jj-scoll/cleaner</code>
+        <button class="copy" type="button" data-copy="try" aria-label="Copy the nix run command">Copy</button>
+      </div>
     </div>
   </div>
 
-  <form class="plan" id="plan" aria-labelledby="plan-title" onsubmit="return false">
-    <div class="plan-head">
-      <h2 id="plan-title">Try a review</h2>
-      <span class="id mono">plan 20261111T072600Z</span>
+  <figure class="demo">
+    <div class="screen">
+      <img src="demo/demo.gif" width="1214" height="605" alt="A terminal session: cleaner plan scans and prints a summary, cleaner show lists every item with its size and reason, and cleaner apply asks once, then deletes only the selected items.">
     </div>
-    <ul class="rows">
-      <li class="row on" data-bytes="8697308774">
-        <label><input type="checkbox" checked><span class="what"><span class="cat">Project artifacts</span><span class="why">21 <code>target/</code> and <code>node_modules/</code> dirs in projects untouched for 30 days</span></span></label>
-        <span class="size">8.1 GiB</span><span class="result" aria-live="polite"></span>
-      </li>
-      <li class="row on" data-bytes="1181116006">
-        <label><input type="checkbox" checked><span class="what"><span class="cat">Finished worktrees</span><span class="why">12 clean worktrees whose branches are merged</span></span></label>
-        <span class="size">1.1 GiB</span><span class="result" aria-live="polite"></span>
-      </li>
-      <li class="row on" data-bytes="25447750860">
-        <label><input type="checkbox" checked><span class="what"><span class="cat">Tool caches</span><span class="why">cargo registry and go-build entries older than their rule</span></span></label>
-        <span class="size">23.7 GiB</span><span class="result" aria-live="polite"></span>
-      </li>
-      <li class="row on" data-bytes="11059540787" data-skip="1 skipped: Slack is running">
-        <label><input type="checkbox" checked><span class="what"><span class="cat">App caches</span><span class="why">browser and Electron caches for 10 apps</span></span></label>
-        <span class="size">10.3 GiB</span><span class="result" aria-live="polite"></span>
-      </li>
-      <li class="row" data-bytes="2576980378">
-        <label><input type="checkbox"><span class="what"><span class="cat">Docker</span><span class="tag">permanent</span><span class="why">unused images and volumes, not pre-selected</span></span></label>
-        <span class="size">2.4 GiB</span><span class="result" aria-live="polite"></span>
-      </li>
-      <li class="row report">
-        <label><input type="checkbox" disabled aria-describedby="report-why"><span class="what"><span class="cat">Large and old</span><span class="why" id="report-why">2 folders over 1 GiB, untouched for 90 days. Report only, never deleted from here.</span></span></label>
-        <span class="size">6.8 GiB</span>
-      </li>
-    </ul>
-    <div class="plan-foot">
-      <span class="total">Selected: <span class="mono" id="total">43.2 GiB</span></span>
-      <button class="btn primary" type="button" id="apply">Apply</button>
-    </div>
-    <p class="note" id="note" aria-live="polite">Untick anything you want to keep, then apply.</p>
-  </form>
+    <figcaption>The CLI, recorded against a throwaway home seeded with fake junk. <code>cleaner plan</code>, <code>cleaner show</code>, <code>cleaner apply</code>.</figcaption>
+  </figure>
 </div>
 
-<section id="how">
+<section id="how" aria-labelledby="how-title">
   <div class="wrap">
-    <h2 class="sec">How a run works</h2>
-    <ol class="steps">
-      <li><h3>Plan</h3><p>A nightly timer, or <code>cleaner plan</code>, scans every category and saves a plan with each item's size and reason.</p></li>
-      <li><h3>Notify</h3><p>If at least 1 GiB can go, you get a desktop notification. Clicking it opens the plan.</p></li>
-      <li><h3>Review</h3><p>Tick and untick in the GUI, or read every item with <code>cleaner show</code>.</p></li>
-      <li><h3>Apply</h3><p>Each approved item is checked again. Anything that changed since the plan is skipped.</p></li>
-      <li><h3>Log</h3><p>Every deletion and skip is written to a JSON-lines log with the bytes actually freed.</p></li>
-    </ol>
+    <div class="sec-intro">
+      <h2 id="how-title">Nothing goes until you've read the plan.</h2>
+      <p class="lede dim">Scanning and deleting are separate steps, with you in between. The nightly timer only ever plans and notifies. Deleting takes your approval, every time.</p>
+    </div>
+    <div class="how">
+      <ol class="steps">
+        <li><h3>Plan</h3><p>A nightly timer, or <code>cleaner plan</code>, scans every enabled category and saves a plan. Each item has its size, the reason it's there and a fingerprint. Anything skipped is listed with why.</p></li>
+        <li><h3>Notify</h3><p>If the pre-selected total crosses 1 GiB, you get a desktop notification. Clicking it opens the plan.</p></li>
+        <li class="key"><h3>Review</h3><p>Tick and untick in the GUI, or read every item with <code>cleaner show</code>.</p></li>
+        <li><h3>Apply</h3><p>Each approved item is checked again: it must still exist, still not be a symlink, still match its fingerprint, and its app must not be running. Anything that drifted is skipped, never silently re-planned.</p></li>
+        <li><h3>Log</h3><p>Every deletion and skip goes into a JSON-lines log, with the bytes actually freed.</p></li>
+      </ol>
+
+      <form class="plan" id="plan" aria-labelledby="plan-title">
+        <div class="plan-head">
+          <h3 id="plan-title">Try a review</h3>
+          <p>A sample plan. Untick anything you want to keep.</p>
+        </div>
+        <ul class="rows">
+          <li class="row on" data-bytes="8697308774">
+            <label><input type="checkbox" checked><span class="what"><span class="cat">Project artifacts</span><span class="why">21 <code>target/</code> and <code>node_modules/</code> dirs in projects untouched for 30 days</span></span></label>
+            <span class="size">8.1 GiB</span><span class="result" aria-live="polite"></span>
+          </li>
+          <li class="row on" data-bytes="1181116006">
+            <label><input type="checkbox" checked><span class="what"><span class="cat">Finished worktrees</span><span class="why">12 clean worktrees whose branches are merged</span></span></label>
+            <span class="size">1.1 GiB</span><span class="result" aria-live="polite"></span>
+          </li>
+          <li class="row on" data-bytes="25447750860">
+            <label><input type="checkbox" checked><span class="what"><span class="cat">Tool caches</span><span class="why">cargo registry and go-build entries older than their rule</span></span></label>
+            <span class="size">23.7 GiB</span><span class="result" aria-live="polite"></span>
+          </li>
+          <li class="row on" data-bytes="11059540787" data-skip="1 skipped: Slack is running">
+            <label><input type="checkbox" checked><span class="what"><span class="cat">Browser and app caches</span><span class="why">Chrome, Firefox, Slack and 5 more</span></span></label>
+            <span class="size">10.3 GiB</span><span class="result" aria-live="polite"></span>
+          </li>
+          <li class="row" data-bytes="2576980378">
+            <label><input type="checkbox"><span class="what"><span class="cat">Docker</span><span class="tag">permanent</span><span class="why">unused images and volumes, not pre-selected</span></span></label>
+            <span class="size">2.4 GiB</span><span class="result" aria-live="polite"></span>
+          </li>
+          <li class="row report">
+            <label><input type="checkbox" disabled aria-describedby="report-why"><span class="what"><span class="cat">Large and old</span><span class="why" id="report-why">2 folders over 1 GiB, untouched for 90 days. Report only: never deleted from here.</span></span></label>
+            <span class="size">6.8 GiB</span>
+          </li>
+        </ul>
+        <div class="plan-foot">
+          <button class="btn primary" type="button" id="apply"><span>Clean selected (<span id="total">43.2 GiB</span>)</span></button>
+        </div>
+        <p class="note" id="note" aria-live="polite">Nothing on your machine is touched by this demo.</p>
+      </form>
+    </div>
+
+    <ul class="rules" aria-label="Rules every deletion follows">
+      <li><b>Never follows symlinks.</b><span>Candidates are checked with <code>lstat</code>; deletion uses its own <code>openat</code>/<code>unlinkat</code> walker with <code>O_NOFOLLOW</code>, safe against symlink races.</span></li>
+      <li><b>Never crosses a mount point.</b><span>Every level of a delete checks <code>st_dev</code>, so a walk stays on its own filesystem.</span></li>
+      <li><b>Never deletes git-tracked files.</b><span>Each candidate is checked against its repo's index.</span></li>
+      <li><b>Re-validates at apply time.</b><span>Anything that changed since the plan was made is skipped.</span></li>
+      <li><b>Never runs as root.</b><span>It refuses to start with euid 0, and never offers a file you couldn't delete yourself.</span></li>
+      <li><b>Stays out of protected paths.</b><span><code>.git</code>, <code>vendored/</code>, AI-tool state like <code>~/.claude</code>, and anything you add to <code>protect</code>.</span></li>
+      <li><b>Reports honest numbers.</b><span>Hardlinks count once. "Freed" is measured with <code>statvfs</code> before and after, not estimated.</span></li>
+      <li><b>Read-only views stay read-only.</b><span>The disk map, the large-and-old report and the low-space check have no path to deletion.</span></li>
+    </ul>
+
+    <div class="honest">
+      <p><strong>There is no trash and no undo.</strong> Approved items are deleted for real, so the review step is the safety net. Read the plan.</p>
+      <p>Docker and Nix deletions are permanent at the source too, and the review screen marks them that way.</p>
+    </div>
   </div>
 </section>
 
-<section id="finds">
+<section id="finds" aria-labelledby="finds-title">
   <div class="wrap">
-    <h2 class="sec">What it finds</h2>
+    <div class="sec-intro">
+      <h2 id="finds-title">What it finds</h2>
+      <p class="lede dim">The whole list in one binary, instead of one tool per slice. A missing tool (<code>docker</code>, <code>nix</code>, <code>go</code>…) just means its category is skipped, with a reason.</p>
+    </div>
+    <ul class="legend" aria-label="Legend">
+      <li><span class="box on" aria-hidden="true"></span>Pre-selected</li>
+      <li><span class="box rule" aria-hidden="true"></span>Pre-selected when its rule matches</li>
+      <li><span class="box" aria-hidden="true"></span>Never pre-selected</li>
+      <li><span class="box report" aria-hidden="true"></span>Report only</li>
+    </ul>
     <dl class="finds">
-      <div><dt>Project artifacts</dt><dd><code>target/</code>, <code>node_modules/</code>, <code>.venv/</code>, <code>.terraform/</code>, <code>build/</code> and more, across more than a dozen ecosystems. Each counts only next to its project marker. <strong>Selected once the project is idle for 30 days.</strong></dd></div>
-      <div><dt>Finished worktrees</dt><dd>Linked git worktrees that are clean and merged, removed with <code>git worktree remove</code>. <strong>Selected after 3 idle days.</strong></dd></div>
-      <div><dt>Tool caches</dt><dd>cargo, Go, npm, bun, pip, poetry, pnpm, Playwright, Cypress, Puppeteer, thumbnails, Terragrunt and OpenTofu, plus your own rules. <strong>Selected by age, per rule.</strong></dd></div>
-      <div><dt>Browser and Electron caches</dt><dd>Chrome, Chromium, Firefox, Slack, Teams, Discord, Cursor and others. <strong>Selected, but skipped at apply time while the app is running.</strong></dd></div>
-      <div><dt>Docker</dt><dd>Stopped containers, unused images and volumes, old build cache, planned and deleted by ID. <strong>Permanent.</strong></dd></div>
-      <div><dt>Nix</dt><dd>Old profile generations, kept by count rather than age, dangling <code>result</code> links and a store GC. <strong>Permanent.</strong></dd></div>
-      <div><dt>Trash and folder rules</dt><dd>Trash entries older than 30 days, and age or size rules over folders such as <code>~/Downloads</code>.</dd></div>
-      <div><dt>Large and old</dt><dd>Anything over 1 GiB untouched for 90 days, with a note when it holds unpushed git commits. <strong>Report only.</strong></dd></div>
+      <div><dt><span class="box rule" role="img" aria-label="Pre-selected when its rule matches"></span><span>Project artifacts</span></dt><dd><code>target/</code>, <code>node_modules/</code>, <code>.venv/</code>, <code>.terraform/</code>, <code>build/</code>, <code>zig-out/</code> and more, across 14 ecosystems from Rust and Node to Zig and Godot. Each counts only next to its project marker.</dd><dd class="when">Project untouched for 30 days, or a finished worktree</dd></div>
+      <div><dt><span class="box" role="img" aria-label="Never pre-selected"></span><span>Tagged caches</span></dt><dd>Any dir with a valid <code>CACHEDIR.TAG</code>, except venvs and the uv cache.</dd><dd class="when">Never</dd></div>
+      <div><dt><span class="box rule" role="img" aria-label="Pre-selected when its rule matches"></span><span>Finished worktrees</span></dt><dd>Linked git worktrees that are clean and merged, removed with <code>git worktree remove</code>.</dd><dd class="when">After 3 idle days</dd></div>
+      <div><dt><span class="box rule" role="img" aria-label="Pre-selected when its rule matches"></span><span>Tool caches</span></dt><dd>cargo, Go, npm, bun, pip, poetry, pnpm, Playwright, Cypress, Puppeteer, thumbnails, Terragrunt and OpenTofu, plus your own rules. The uv cache is pruned through <code>uv</code> itself.</dd><dd class="when">By age, per rule</dd></div>
+      <div><dt><span class="box on" role="img" aria-label="Pre-selected"></span><span>Browser and Electron caches</span></dt><dd>Chrome, Chromium, Firefox, Slack, Teams, Discord, Claude and Cursor caches, plus Chromium's on-device AI model.</dd><dd class="when">Yes, but skipped at apply time while the app is running</dd></div>
+      <div><dt><span class="box rule" role="img" aria-label="Pre-selected when its rule matches"></span><span>Docker <span class="tag">permanent</span></span></dt><dd>Stopped containers, dangling and unused images, unused volumes, buildx builders and old build cache, planned and deleted by ID.</dd><dd class="when">Stopped containers and build cache over 7 days, dangling images</dd></div>
+      <div><dt><span class="box rule" role="img" aria-label="Pre-selected when its rule matches"></span><span>Nix <span class="tag">permanent</span></span></dt><dd>Old profile generations (kept by count, never age), dangling <code>result</code> links, idle devbox roots, a store GC, and system generations via one <code>pkexec</code> prompt.</dd><dd class="when">Old generations and dangling links</dd></div>
+      <div><dt><span class="box rule" role="img" aria-label="Pre-selected when its rule matches"></span><span>Folder rules</span></dt><dd>Age, size and glob rules over any folder, like <code>~/Downloads</code> files older than 90 days.</dd><dd class="when">Per rule</dd></div>
+      <div><dt><span class="box on" role="img" aria-label="Pre-selected"></span><span>Trash</span></dt><dd>XDG Trash entries deleted more than 30 days ago, plus orphaned <code>.trashinfo</code> files.</dd><dd class="when">Yes</dd></div>
+      <div><dt><span class="box report" role="img" aria-label="Report only"></span><span>Large and old</span></dt><dd>Anything over 1 GiB untouched for 90 days, with a git badge such as "unpushed commits".</dd><dd class="when">Report only. It can never be deleted from here.</dd></div>
     </dl>
   </div>
 </section>
 
-<section id="safety">
+<section id="app" aria-labelledby="app-title">
   <div class="wrap">
-    <h2 class="sec">Rules every deletion follows</h2>
-    <ul class="safety">
-      <li><b>Never follows symlinks.</b><span>Candidates are checked with <code>lstat</code>, and deletion uses <code>openat</code> and <code>unlinkat</code> with <code>O_NOFOLLOW</code>.</span></li>
-      <li><b>Never crosses a mount point.</b><span>Every level of a delete checks the device, so a walk stays on its own filesystem.</span></li>
-      <li><b>Never deletes git-tracked files.</b><span>Each candidate is checked against its repo's index.</span></li>
-      <li><b>Checks again before deleting.</b><span>An item must still exist and match its fingerprint, and its app must not be running.</span></li>
-      <li><b>Never runs as root.</b><span>It refuses to start as root and never offers a file you couldn't delete yourself.</span></li>
-      <li><b>Reports honest numbers.</b><span>Hardlinks are counted once, and freed space is measured with <code>statvfs</code> before and after.</span></li>
+    <div class="sec-intro">
+      <h2 id="app-title">A review screen, not a delete button.</h2>
+      <p class="lede dim">The GTK4 and libadwaita app shows the same plan as the CLI. Settings edit the same <code>config.toml</code> you can edit by hand.</p>
+    </div>
+    <div class="shots">
+      <figure>
+        <div class="screen"><img src="demo/dashboard.png" width="900" height="700" loading="lazy" alt="The dashboard: a disk usage bar, a new plan that can free 8.7 GiB with nothing touched yet, and the plan broken down by category."></div>
+        <figcaption>The dashboard: usage per filesystem, and what the latest plan can free.</figcaption>
+      </figure>
+      <figure>
+        <div class="screen"><img src="demo/review.png" width="900" height="700" loading="lazy" alt="The review screen: a checkbox per item with its size and reason. An active project is left unticked."></div>
+        <figcaption>The review: every item with its reason. An active project stays unticked.</figcaption>
+      </figure>
+    </div>
+    <ul class="features">
+      <li><b>Disk map</b><span>A drill-down of what's using your disk, with the rows already in the plan marked. Read-only: there is no delete button.</span></li>
+      <li><b>Low-space alert</b><span>Every 10 minutes, one <code>statvfs</code> per filesystem. Below 10% free, it builds a plan and sends one urgent notification. It never deletes.</span></li>
+      <li><b>CLI for everything</b><span><code>plan</code>, <code>show</code>, <code>apply</code>, <code>status</code> and <code>log</code>, with <code>--json</code> output for scripting.</span></li>
     </ul>
-    <p class="warn">There is no trash and no undo. Approved items are deleted for real, so the review step is your safety net.</p>
   </div>
 </section>
 
-<section id="install">
+<section id="install" aria-labelledby="install-title">
   <div class="wrap">
-    <h2 class="sec">Install</h2>
-    <div class="prose">
-      <p>cleaner runs on Linux with a systemd user session. The quickest start is the command-line version: one static file that runs on any distro, with everything but the GUI.</p>
+    <div class="sec-intro">
+      <h2 id="install-title">Install</h2>
+      <p class="lede dim">Linux with a systemd user session. Tested daily on NixOS; reports from other distros are welcome.</p>
     </div>
-    <h3 class="sub">Download the command-line version</h3>
-<pre>v=v0.1.0 t=x86_64-unknown-linux-musl   <span class="c"># or aarch64-unknown-linux-musl</span>
+    <div class="install">
+      <div class="col">
+        <h3>Download the CLI</h3>
+        <p>Each release has a single static binary for x86_64 and aarch64. Everything but the GUI, on any distro.</p>
+<pre><code>v=v0.1.0 t=x86_64-unknown-linux-musl   <span class="c"># or aarch64-unknown-linux-musl</span>
 curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz
+curl -LO https://github.com/jj-scoll/cleaner/releases/download/$v/cleaner-$v-$t.tar.gz.sha256
+sha256sum -c cleaner-$v-$t.tar.gz.sha256
 tar xzf cleaner-$v-$t.tar.gz
-install -Dm755 cleaner-$v-$t/cleaner ~/.local/bin/cleaner</pre>
-    <h3 class="sub">Run it with Nix, GUI included</h3>
-<pre>nix run github:jj-scoll/cleaner</pre>
-    <h3 class="sub">Build from source</h3>
-    <div class="prose">
-      <p>You need a recent stable Rust toolchain. The GUI needs GTK 4.10 and libadwaita 1.6 or newer.</p>
+install -Dm755 cleaner-$v-$t/cleaner ~/.local/bin/cleaner
+~/.local/bin/cleaner timer install</code></pre>
+        <p>Without the GUI, the nightly notification tells you to run <code>cleaner show</code> instead of opening a review window.</p>
+      </div>
+      <div class="col">
+        <h3>With Nix, GUI included</h3>
+<pre><code>nix run github:jj-scoll/cleaner          <span class="c"># try it</span>
+nix profile install github:jj-scoll/cleaner
+cleaner timer install                    <span class="c"># again after every upgrade</span></code></pre>
+        <p>The timer units point at the package's store path, so re-run <code>cleaner timer install</code> after each <code>nix profile upgrade</code>.</p>
+      </div>
+      <div class="col">
+        <h3>With home-manager</h3>
+        <p>The flake's module declares the timers, so they follow every rebuild.</p>
+<pre><code><span class="c"># flake inputs</span>
+cleaner = {
+  url = "github:jj-scoll/cleaner";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+<span class="c"># home-manager config</span>
+imports = [ inputs.cleaner.homeManagerModules.default ];
+services.cleaner = {
+  enable = true;
+  nightlyAt = "03:00";       <span class="c"># default</span>
+  lowSpaceEvery = "10min";   <span class="c"># default; null turns the check off</span>
+};</code></pre>
+      </div>
     </div>
-<pre><span class="c"># With Nix: the flake provides GTK and libadwaita</span>
-git clone https://github.com/jj-scoll/cleaner &amp;&amp; cd cleaner
+
+    <details>
+      <summary>Build from source, and install the timers by hand</summary>
+      <div class="details-body">
+        <h4>Requirements</h4>
+        <p class="dim">A recent stable Rust toolchain (edition 2024). For the GUI: GTK 4.10 and libadwaita 1.6 or newer, plus <code>pkg-config</code>. Optional, each enabling its category: <code>git</code>, <code>docker</code>, <code>nix</code>, <code>uv</code>, <code>go</code>.</p>
+        <h4>Build</h4>
+<pre><code><span class="c"># With Nix: the flake provides a dev shell with GTK and libadwaita</span>
 mkdir -p .gcroots
 nix develop --profile .gcroots/devshell -c cargo build --release
 
-<span class="c"># Without Nix (Fedora shown; see the README for Debian and Arch)</span>
-sudo dnf install gtk4-devel libadwaita-devel pkgconf-pkg-config
+<span class="c"># Without Nix, install the GTK development packages first</span>
+sudo dnf install gtk4-devel libadwaita-devel pkgconf-pkg-config   <span class="c"># Fedora</span>
+sudo apt install libgtk-4-dev libadwaita-1-dev pkg-config         <span class="c"># Debian 13 / Ubuntu 24.10+</span>
+sudo pacman -S gtk4 libadwaita pkgconf                            <span class="c"># Arch</span>
 cargo build --release
 
 <span class="c"># CLI only, no GTK needed</span>
-cargo build --release --no-default-features</pre>
-    <h3 class="sub">Turn on the nightly plan</h3>
-<pre><span class="c"># A source build: copy it somewhere stable first</span>
-install -Dm755 target/release/cleaner ~/.local/bin/cleaner
+cargo build --release --no-default-features</code></pre>
+        <h4>Install the timers</h4>
+<pre><code>install -Dm755 target/release/cleaner ~/.local/bin/cleaner
+~/.local/bin/cleaner timer install</code></pre>
+        <p class="dim">This writes four user units and a <code>.desktop</code> file, all pointing at the binary's absolute path, then enables the timers. Neither timer deletes anything.</p>
+        <div class="table-scroll">
+          <table class="units">
+            <thead><tr><th scope="col">Unit</th><th scope="col">Runs</th><th scope="col">Does</th></tr></thead>
+            <tbody>
+              <tr><td><code>cleaner.timer</code></td><td>daily at <code>timer_time</code> (03:00)</td><td><code>cleaner plan --notify</code>: plans, notifies, deletes nothing</td></tr>
+              <tr><td><code>cleaner-space.timer</code></td><td>every <code>low_space.interval</code> (10 min)</td><td><code>cleaner plan --if-low</code>: checks free space, deletes nothing</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="dim">After an upgrade, run <code>cleaner timer install</code> again. <code>cleaner timer uninstall</code> removes everything it wrote.</p>
+      </div>
+    </details>
 
-~/.local/bin/cleaner timer install</pre>
-    <div class="prose">
-      <p>This installs a nightly timer that builds a plan and notifies you, and a 10-minute low-space check. Neither one deletes anything. <code>cleaner timer uninstall</code> removes both.</p>
-      <p>Full usage and configuration are in the <a href="https://github.com/jj-scoll/cleaner#readme">README</a>.</p>
+    <div class="prose" style="margin-top: 2rem">
+      <p class="dim">Usage, configuration and the file layout are in the <a href="https://github.com/jj-scoll/cleaner#readme">README</a>.</p>
     </div>
   </div>
 </section>
@@ -326,19 +525,39 @@ install -Dm755 target/release/cleaner ~/.local/bin/cleaner
 
 <footer>
   <div class="wrap">
-    <span>cleaner is a personal tool, tested on NixOS so far. Reports from other distros are welcome.</span>
-    <span><a href="https://github.com/jj-scoll/cleaner/blob/main/LICENSE">MIT license</a></span>
+    <img src="assets/icon.svg" alt="" width="44" height="44">
+    <p>cleaner is a personal tool, built for and used daily on one NixOS desktop. Nothing is hardcoded to that machine, but other setups haven't been tested yet. MIT licensed.</p>
+    <ul>
+      <li><a href="https://github.com/jj-scoll/cleaner">GitHub</a></li>
+      <li><a href="https://github.com/jj-scoll/cleaner/releases">Releases</a></li>
+      <li><a href="https://github.com/jj-scoll/cleaner/issues">Issues</a></li>
+    </ul>
   </div>
 </footer>
 
 <script>
 (() => {
+  // Copy buttons.
+  document.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const text = document.getElementById(btn.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied';
+      } catch {
+        btn.textContent = 'Select and copy';
+      }
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // The sample review.
   const GiB = 1024 ** 3;
   const rows = [...document.querySelectorAll('.row:not(.report)')];
-  const total = document.getElementById('total');
   const apply = document.getElementById('apply');
   const note = document.getElementById('note');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const intro = note.textContent;
   let applied = false;
 
   const fmt = b => (b / GiB).toFixed(1) + ' GiB';
@@ -347,7 +566,7 @@ install -Dm755 target/release/cleaner ~/.local/bin/cleaner
   function refresh() {
     rows.forEach(r => r.classList.toggle('on', r.querySelector('input').checked));
     const sum = selected().reduce((s, r) => s + Number(r.dataset.bytes), 0);
-    total.textContent = fmt(sum);
+    document.getElementById('total').textContent = fmt(sum);
     apply.disabled = sum === 0;
   }
 
@@ -358,8 +577,8 @@ install -Dm755 target/release/cleaner ~/.local/bin/cleaner
       const res = r.querySelector('.result');
       res.textContent = ''; res.className = 'result';
     });
-    apply.textContent = 'Apply';
-    note.textContent = 'Untick anything you want to keep, then apply.';
+    apply.innerHTML = '<span>Clean selected (<span id="total"></span>)</span>';
+    note.textContent = intro;
     refresh();
   }
 
@@ -388,8 +607,8 @@ install -Dm755 target/release/cleaner ~/.local/bin/cleaner
         freed += Number(r.dataset.bytes);
       }
     }
-    note.textContent = 'Freed ' + fmt(freed) + '. This was a demo, so nothing on your machine changed.';
-    apply.textContent = 'Reset';
+    note.textContent = 'Freed ' + fmt(freed) + '. This was a demo: nothing on your machine changed.';
+    apply.textContent = 'Reset the demo';
     apply.disabled = false;
   });
 
