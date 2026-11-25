@@ -1,0 +1,23 @@
+pkgbase = cleaner-bin
+	pkgdesc = Approve-first disk cleanup for Linux desktops (static CLI binary, no GUI)
+	pkgver = 0.2.0
+	pkgrel = 1
+	url = https://github.com/jj-scoll/cleaner
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = git
+	optdepends = docker: Docker category
+	optdepends = nix: Nix generations and store category
+	optdepends = uv: uv cache prune
+	optdepends = go: Go build and module caches
+	provides = cleaner=0.2.0
+	conflicts = cleaner
+	options = !strip
+	options = !debug
+	source_x86_64 = https://github.com/jj-scoll/cleaner/releases/download/v0.2.0/cleaner-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+	sha256sums_x86_64 = 41a2f797b465831458d32f4dc31001f6edcf9dc45a747dce0b10dfd9b2ae3d84
+	source_aarch64 = https://github.com/jj-scoll/cleaner/releases/download/v0.2.0/cleaner-v0.2.0-aarch64-unknown-linux-musl.tar.gz
+	sha256sums_aarch64 = c4c78feb9bc763d66062a86dd8b14bca435355a5bece4a92a5ae8b8465feb731
+
+pkgname = cleaner-bin

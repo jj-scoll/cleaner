@@ -1,0 +1,54 @@
+# Maintainer: jj-scoll <TODO: contact address>
+
+pkgname=cleaner
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Approve-first disk cleanup for Linux desktops: builds a plan, deletes only what you approve'
+arch=('x86_64' 'aarch64')
+url='https://github.com/jj-scoll/cleaner'
+license=('MIT')
+# git: without it every candidate inside a repository counts as tracked and is skipped.
+depends=('gtk4' 'libadwaita' 'glib2' 'cairo' 'pango' 'gdk-pixbuf2' 'graphene'
+         'gcc-libs' 'glibc' 'git')
+makedepends=('cargo' 'pkgconf')
+optdepends=('docker: Docker category'
+            'nix: Nix generations and store category'
+            'uv: uv cache prune'
+            'go: Go build and module caches')
+conflicts=('cleaner-bin')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        'io.github.jj_scoll.Cleaner.desktop')
+sha256sums=('640b93a8d72ee6df354c4dbc1291bafec94610d68b9645f8a23c3aa709527f13'
+            '1ed490dc1b96026de62715d895af0c71bdd05203228a1b2ab958017f6a8b996e')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  # The GUI tests need a display; the rest are hermetic (temp homes, faked tools).
+  cargo test --frozen --release --no-default-features
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/cleaner "$pkgdir/usr/bin/cleaner"
+  install -Dm644 assets/icon/cleaner.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.jj_scoll.Cleaner.svg"
+  install -Dm644 "$srcdir/io.github.jj_scoll.Cleaner.desktop" \
+    "$pkgdir/usr/share/applications/io.github.jj_scoll.Cleaner.desktop"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

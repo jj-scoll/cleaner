@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cleaner
+Comment=Approve-first disk cleanup
+Exec=cleaner gui
+Icon=io.github.jj_scoll.Cleaner
+Terminal=false
+Categories=System;Utility;

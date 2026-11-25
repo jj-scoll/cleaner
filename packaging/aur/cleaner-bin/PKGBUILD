@@ -1,0 +1,33 @@
+# Maintainer: jj-scoll <TODO: contact address>
+
+pkgname=cleaner-bin
+_pkgname=cleaner
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Approve-first disk cleanup for Linux desktops (static CLI binary, no GUI)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/jj-scoll/cleaner'
+license=('MIT')
+# The binary is statically linked (musl). git: without it every candidate
+# inside a repository counts as tracked and is skipped.
+depends=('git')
+optdepends=('docker: Docker category'
+            'nix: Nix generations and store category'
+            'uv: uv cache prune'
+            'go: Go build and module caches')
+provides=("$_pkgname=$pkgver")
+conflicts=("$_pkgname")
+options=('!strip' '!debug')
+_base="$url/releases/download/v$pkgver/$_pkgname-v$pkgver"
+source_x86_64=("$_base-x86_64-unknown-linux-musl.tar.gz")
+source_aarch64=("$_base-aarch64-unknown-linux-musl.tar.gz")
+# From the release's published .sha256 files.
+sha256sums_x86_64=('41a2f797b465831458d32f4dc31001f6edcf9dc45a747dce0b10dfd9b2ae3d84')
+sha256sums_aarch64=('c4c78feb9bc763d66062a86dd8b14bca435355a5bece4a92a5ae8b8465feb731')
+
+package() {
+  cd "$_pkgname-v$pkgver-$CARCH-unknown-linux-musl"
+  install -Dm755 cleaner "$pkgdir/usr/bin/cleaner"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
