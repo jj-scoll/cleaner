@@ -19,6 +19,8 @@ pub struct Paths {
     pub applications_dir: PathBuf,
     /// `$XDG_DATA_HOME/icons/hicolor/scalable/apps`: the app icon.
     pub icon_dir: PathBuf,
+    /// `$XDG_DATA_HOME/cleaner/hold`: the opt-in holding area.
+    pub hold_dir: PathBuf,
 }
 
 /// An XDG base-dir variable counts only when set, non-empty and absolute
@@ -54,6 +56,7 @@ impl Paths {
             systemd_user_dir: config_home.join("systemd/user"),
             applications_dir: data_home.join("applications"),
             icon_dir: data_home.join("icons/hicolor/scalable/apps"),
+            hold_dir: data_home.join("cleaner/hold"),
             plans_dir: state_dir.join("plans"),
             log_file: state_dir.join("log.jsonl"),
             lock_file,
@@ -78,6 +81,7 @@ impl Paths {
             systemd_user_dir: home.join(".config/systemd/user"),
             applications_dir: home.join(".local/share/applications"),
             icon_dir: home.join(".local/share/icons/hicolor/scalable/apps"),
+            hold_dir: home.join(".local/share/cleaner/hold"),
             state_dir,
         }
     }

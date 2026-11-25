@@ -14,7 +14,7 @@ pub struct LogLine {
     pub entry_id: String,
     pub category: String,
     pub title: String,
-    /// "deleted" | "skipped" | "failed"
+    /// "deleted" | "held" | "restored" | "skipped" | "failed"
     pub outcome: String,
     pub bytes: u64,
     pub detail: String,

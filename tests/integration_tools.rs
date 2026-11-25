@@ -30,6 +30,7 @@ fn scan_real(cat: &dyn Category) -> ScanOutput {
         tools: &SystemRunner,
         euid: rustix::process::geteuid().as_raw(),
         usage: None,
+        hold: None,
     };
     cat.scan(&ctx, &mut InodeSet::default()).unwrap()
 }

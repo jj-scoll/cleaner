@@ -37,12 +37,13 @@ pub struct ReviewPage {
     inner: Rc<Inner>,
 }
 
-/// The confirmation dialog for `c`: `Cancel` and a destructive `Delete`
-/// (response id "delete").
+/// The confirmation dialog for `c`: `Cancel` and a destructive button named
+/// by the heading's verb, `Delete` or (holding) `Clean` (response id "delete").
 pub(crate) fn confirm_dialog(c: &Confirm) -> adw::AlertDialog {
     let d = adw::AlertDialog::new(Some(&c.heading), Some(&c.body));
     d.add_response("cancel", "Cancel");
-    d.add_response("delete", "Delete");
+    let verb = c.heading.split(' ').next().filter(|v| *v == "Clean");
+    d.add_response("delete", verb.unwrap_or("Delete"));
     d.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
     d.set_default_response(Some("cancel"));
     d.set_close_response("cancel");
@@ -135,7 +136,7 @@ fn load_top_matches(row: &adw::ExpanderRow, rule: StoreRule) {
         move |_| {
             let paths = crate::paths::Paths::from_env()?;
             let (config, _) = crate::config::load(&paths.config_file)?;
-            let protector = crate::protect::Protector::new(&paths.home, &config.protect);
+            let protector = crate::engine::protector_for(&paths, &config);
             let now = jiff::Timestamp::now().as_second();
             let ctx = crate::category::ScanCtx {
                 home: &paths.home,
@@ -145,6 +146,7 @@ fn load_top_matches(row: &adw::ExpanderRow, rule: StoreRule) {
                 tools: &crate::tool::SystemRunner,
                 euid: rustix::process::geteuid().as_raw(),
                 usage: None,
+                hold: None,
             };
             let matches = top_matches(&rule, &ctx, 20);
             Ok((now, paths.home, matches))

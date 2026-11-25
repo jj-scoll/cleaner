@@ -285,6 +285,9 @@ impl App {
         }
         let mut model = ReviewModel::new(plan.clone());
         model.set_sort(Sort::load(&self.paths.state_dir));
+        let hold = self.hold_preview(&plan);
+        let held = hold.is_some();
+        model.set_hold(hold);
         let page = ReviewPage::new(Rc::new(RefCell::new(model)), filter);
         let state_dir = self.paths.state_dir.clone();
         page.connect_sort(move |sort| {
@@ -295,10 +298,17 @@ impl App {
         let app = Rc::downgrade(self);
         page.connect_clean(move |ids| {
             if let Some(app) = app.upgrade() {
-                app.apply(plan.clone(), ids);
+                app.apply(plan.clone(), ids, held);
             }
         });
         self.nav.push(&page.page());
+    }
+
+    /// What holding will do with each of `plan`'s entries (`None`: holding
+    /// is off, or the config can't be read, which `apply` reports itself).
+    fn hold_preview(&self, plan: &Plan) -> Option<crate::hold::Preview> {
+        let (config, _) = config::load(&self.paths.config_file).ok()?;
+        crate::hold::preview(plan, &self.paths.hold_dir, &config.hold)
     }
 
     /// Every selected entry of the latest plan, after the same confirmation.
@@ -306,16 +316,19 @@ impl App {
         let Some(plan) = self.latest.borrow().clone() else {
             return;
         };
-        let model = ReviewModel::new(plan.clone());
+        let mut model = ReviewModel::new(plan.clone());
         let ids = model.selected_ids(None);
         if ids.is_empty() {
             return;
         }
+        let hold = self.hold_preview(&plan);
+        let held = hold.is_some();
+        model.set_hold(hold);
         let dialog = confirm_dialog(&model.confirm(None));
         let app = Rc::downgrade(self);
         dialog.connect_response(Some("delete"), move |_, _| {
             if let Some(app) = app.upgrade() {
-                app.apply(plan.clone(), ids.clone());
+                app.apply(plan.clone(), ids.clone(), held);
             }
         });
         dialog.present(Some(&self.window));
@@ -324,10 +337,22 @@ impl App {
     /// Deletes `ids` of `plan` on a worker thread behind a modal progress
     /// dialog. On success, returns to a rebuilt dashboard and shows the result;
     /// on failure (e.g. the lock is held) shows why and stays on the page.
-    fn apply(self: &Rc<Self>, plan: Plan, ids: Vec<String>) {
+    /// `held` is whether the confirmation the user accepted said "hold":
+    /// if the setting changed since, nothing is applied.
+    fn apply(self: &Rc<Self>, plan: Plan, ids: Vec<String>, held: bool) {
         let Some(config) = self.config() else { return };
+        if config.hold.enabled != held {
+            self.alert(
+                "Settings changed",
+                &format!(
+                    "Holding was turned {} after you confirmed, so nothing was cleaned. Review the plan again.",
+                    if config.hold.enabled { "on" } else { "off" }
+                ),
+            );
+            return;
+        }
         let label = gtk::Label::builder()
-            .label("Deleting…")
+            .label(if held { "Cleaning…" } else { "Deleting…" })
             .xalign(0.0)
             .ellipsize(gtk::pango::EllipsizeMode::Middle)
             .build();
@@ -368,7 +393,11 @@ impl App {
                 let text = if p.current.is_empty() {
                     "Finishing…".to_string()
                 } else {
-                    format!("Deleting {}…", p.current)
+                    format!(
+                        "{} {}…",
+                        if held { "Cleaning" } else { "Deleting" },
+                        p.current
+                    )
                 };
                 label.set_label(&text);
                 bar.set_fraction(if p.total == 0 {
@@ -402,11 +431,39 @@ impl App {
     fn show_result(&self, plan: &Plan, report: &RunReport) {
         let count = |f: fn(&Outcome) -> bool| report.results.iter().filter(|(_, o)| f(o)).count();
         let deleted = count(|o| matches!(o, Outcome::Deleted { .. }));
+        let held = count(|o| matches!(o, Outcome::Held { .. }));
         let skipped = count(|o| matches!(o, Outcome::Skipped { .. }));
         let failed = count(|o| matches!(o, Outcome::Failed { .. }));
-        let mut body = format!(
-            "{deleted} deleted, {skipped} skipped, {failed} failed\n\nFreed (filesystem free space after minus before):"
-        );
+        let mut body = if held > 0 {
+            let bytes: u64 = report
+                .results
+                .iter()
+                .map(|(_, o)| match o {
+                    Outcome::Held { bytes, .. } => *bytes,
+                    _ => 0,
+                })
+                .sum();
+            format!(
+                "{deleted} deleted, {held} held, {skipped} skipped, {failed} failed\n\n{} moved to the holding area; it frees nothing until purged. Restore with `cleaner hold restore`.",
+                human_bytes(bytes)
+            )
+        } else {
+            format!("{deleted} deleted, {skipped} skipped, {failed} failed")
+        };
+        let purged: u64 = report
+            .purged
+            .iter()
+            .filter_map(|p| p.result.as_ref().ok())
+            .sum();
+        if !report.purged.is_empty() {
+            body.push_str(&format!(
+                "\n\nPurged {} expired hold entr{} ({}).",
+                report.purged.len(),
+                if report.purged.len() == 1 { "y" } else { "ies" },
+                human_bytes(purged)
+            ));
+        }
+        body.push_str("\n\nFreed (filesystem free space after minus before):");
         for (label, delta) in &report.freed_by_fs {
             let sign = if *delta < 0 { "-" } else { "" };
             body.push_str(&format!(
@@ -426,7 +483,7 @@ impl App {
                 match outcome {
                     Outcome::Skipped { reason } => Some(format!("skipped  {title}: {reason}")),
                     Outcome::Failed { error } => Some(format!("failed  {title}: {error}")),
-                    Outcome::Deleted { .. } => None,
+                    Outcome::Deleted { .. } | Outcome::Held { .. } => None,
                 }
             })
             .collect();

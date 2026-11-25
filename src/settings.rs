@@ -154,6 +154,12 @@ impl ConfigDoc {
         if nn.gc != on.gc {
             changes.push(("nix", "gc", nn.gc.into()));
         }
+        if n.hold.enabled != o.hold.enabled {
+            changes.push(("hold", "enabled", n.hold.enabled.into()));
+        }
+        if n.hold.days != o.hold.days {
+            changes.push(("hold", "days", int(n.hold.days)?));
+        }
 
         let root = self.doc.as_table_mut();
         for (tbl, key, v) in changes {
@@ -227,6 +233,9 @@ pub fn validate(c: &Config) -> Result<(), Vec<String>> {
     }
     if c.ide_versions.idle_days < 1 {
         errors.push("old IDE versions idle_days must be at least 1".into());
+    }
+    if c.hold.days < 1 {
+        errors.push("hold days must be at least 1".into());
     }
     for r in &c.user_rules {
         if !(r.path.starts_with("~/") || r.path.starts_with('/')) {

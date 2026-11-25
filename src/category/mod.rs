@@ -31,9 +31,23 @@ pub struct ScanOutput {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Outcome {
-    Deleted { bytes: u64, failures: Vec<String> },
-    Skipped { reason: String },
-    Failed { error: String },
+    Deleted {
+        bytes: u64,
+        failures: Vec<String>,
+    },
+    /// Moved into the holding area as hold entry `id`; `bytes` were moved,
+    /// not freed (nothing is freed until the entry is purged).
+    Held {
+        id: String,
+        bytes: u64,
+        failures: Vec<String>,
+    },
+    Skipped {
+        reason: String,
+    },
+    Failed {
+        error: String,
+    },
 }
 
 pub struct ScanCtx<'a> {
@@ -47,6 +61,9 @@ pub struct ScanCtx<'a> {
     pub euid: u32,
     /// The disk index from the last scan, when one is loaded.
     pub usage: Option<&'a crate::fsutil::usage::UsageIndex>,
+    /// Apply only: move this entry's files and folders into the holding
+    /// area instead of deleting them. Always `None` while scanning.
+    pub hold: Option<crate::hold::HoldTo<'a>>,
 }
 
 /// What a category's rules say about one path, for `cleaner explain`.
@@ -155,7 +172,30 @@ pub fn apply_default(entry: &Entry, ctx: &ScanCtx) -> Outcome {
 /// Re-validates each target against its plan fingerprint (§6.4) and deletes
 /// the ones that still match. `Deleted` if anything was deleted (per-target
 /// skips and errors in `failures`); otherwise `Skipped` with the first reason.
+/// With `ctx.hold` set, matching targets are moved into the holding area
+/// instead (`Held`), and nothing is deleted.
 pub fn apply_targets(targets: &[Target], ctx: &ScanCtx) -> Outcome {
+    if let Some(to) = ctx.hold {
+        let paths: Vec<&Path> = targets.iter().map(|t| t.path.as_path()).collect();
+        if let Some(reason) = off_hold_device(&paths, to.area) {
+            return Outcome::Skipped { reason };
+        }
+        let mut session = crate::hold::Session::new(to);
+        if let Err(reason) = session.reserve(&paths) {
+            return Outcome::Skipped { reason };
+        }
+        let mut failures = Vec::new();
+        let mut first_reason = None;
+        for t in targets {
+            let r = check_target(t, ctx)
+                .and_then(|()| session.hold(&t.path, Some((t.fp.dev, t.fp.ino))));
+            if let Err(reason) = r {
+                failures.push(format!("{}: {reason}", t.path.display()));
+                first_reason.get_or_insert(reason);
+            }
+        }
+        return held_outcome(session, failures, first_reason);
+    }
     let mut deleted_any = false;
     let mut bytes = 0;
     let mut failures = Vec::new();
@@ -181,8 +221,48 @@ pub fn apply_targets(targets: &[Target], ctx: &ScanCtx) -> Outcome {
     }
 }
 
+/// `Some(reason)` when any of `paths` that exists is on another filesystem
+/// than the holding area: such an entry is left whole rather than half held.
+pub(crate) fn off_hold_device(paths: &[&Path], area: &crate::hold::Area) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let off = paths
+        .iter()
+        .find(|p| std::fs::symlink_metadata(p).is_ok_and(|md| md.dev() != area.dev()))?;
+    Some(format!(
+        "{} is not on the holding area's filesystem ({}); left in place, not deleted",
+        off.display(),
+        area.dir().display()
+    ))
+}
+
+/// `Held` if the session held anything (refusals in `failures`), else
+/// `Skipped` with the first reason.
+pub(crate) fn held_outcome(
+    session: crate::hold::Session,
+    failures: Vec<String>,
+    first_reason: Option<String>,
+) -> Outcome {
+    match session.finish() {
+        Some((id, bytes)) => Outcome::Held {
+            id,
+            bytes,
+            failures,
+        },
+        None => Outcome::Skipped {
+            reason: first_reason.unwrap_or_else(|| "nothing to hold".into()),
+        },
+    }
+}
+
 /// Deletes one target if it still matches; `Err(reason)` says why not.
 fn apply_target(t: &Target, ctx: &ScanCtx) -> Result<u64, String> {
+    check_target(t, ctx)?;
+    delete_tree(&t.path).map_err(|e| format!("delete failed: {e}"))
+}
+
+/// `Ok` if `t` may still be removed: exists, is not a symlink, is not
+/// protected, matches its plan fingerprint and holds nothing git tracks.
+fn check_target(t: &Target, ctx: &ScanCtx) -> Result<(), String> {
     let md = match std::fs::symlink_metadata(&t.path) {
         Ok(md) => md,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -205,5 +285,5 @@ fn apply_target(t: &Target, ctx: &ScanCtx) -> Result<u64, String> {
     if crate::git::repo_root(&t.path).is_some_and(|repo| crate::git::is_tracked(&repo, &t.path)) {
         return Err("tracked in git".into());
     }
-    delete_tree(&t.path).map_err(|e| format!("delete failed: {e}"))
+    Ok(())
 }

@@ -398,3 +398,31 @@ fn validate_rejects_bad_plan4_values() {
         ["low-space interval: invalid interval \"soon\" (expected e.g. 10min or 1h)"]
     );
 }
+
+#[test]
+fn settings_writes_hold_and_validates_days() {
+    let dir = TempDir::new().unwrap();
+    let path = write_config(&dir, DEFAULT_CONFIG_TOML);
+    let mut doc = ConfigDoc::load(&path).unwrap();
+    let mut c = doc.config().unwrap();
+    c.hold.enabled = true;
+    c.hold.days = 14;
+    doc.update(&c).unwrap();
+    doc.save(&path).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
+    let hold = text
+        .split("[hold]")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(hold.lines().any(|l| l.trim() == "enabled = true"), "{text}");
+    assert!(hold.lines().any(|l| l.trim() == "days = 14"), "{text}");
+    let (loaded, _) = config::load(&path).unwrap();
+    assert_eq!((loaded.hold.enabled, loaded.hold.days), (true, 14));
+
+    let mut bad = Config::default();
+    bad.hold.days = 0;
+    assert_eq!(
+        validate(&bad).unwrap_err(),
+        ["hold days must be at least 1"]
+    );
+}

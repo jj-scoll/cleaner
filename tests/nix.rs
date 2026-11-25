@@ -55,6 +55,7 @@ fn scan(home: &Path, cfg: &Config, tools: &FakeRunner) -> ScanOutput {
         tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     Nix.scan(&ctx, &mut InodeSet::default()).unwrap()
 }
@@ -69,6 +70,7 @@ fn apply(entry: &Entry, home: &Path, cfg: &Config, tools: &FakeRunner) -> Outcom
         tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     Nix.apply(entry, &ctx)
 }

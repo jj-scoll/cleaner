@@ -469,6 +469,25 @@ pub fn apply_rule(rule: &StoreRule, ctx: &ScanCtx) -> Outcome {
             reason: "nothing matches the rule now".into(),
         };
     }
+    if let Some(to) = ctx.hold {
+        let paths: Vec<&Path> = matches.iter().map(|m| m.path.as_path()).collect();
+        if let Some(reason) = crate::category::off_hold_device(&paths, to.area) {
+            return Outcome::Skipped { reason };
+        }
+        let mut session = crate::hold::Session::new(to);
+        if let Err(reason) = session.reserve(&paths) {
+            return Outcome::Skipped { reason };
+        }
+        let mut failures = Vec::new();
+        let mut first_reason = None;
+        for m in &matches {
+            if let Err(reason) = session.hold(&m.path, None) {
+                failures.push(format!("{}: {reason}", m.path.display()));
+                first_reason.get_or_insert(reason);
+            }
+        }
+        return crate::category::held_outcome(session, failures, first_reason);
+    }
     let mut deleted_any = false;
     let mut bytes = 0;
     let mut failures = Vec::new();

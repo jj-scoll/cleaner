@@ -8,6 +8,7 @@ pub mod fsutil;
 pub mod git;
 #[cfg(feature = "gui")]
 pub mod gui;
+pub mod hold;
 pub mod lock;
 pub mod log;
 pub mod notify;

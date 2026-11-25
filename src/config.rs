@@ -31,6 +31,16 @@ pub struct Config {
     pub nix: NixCfg,
     pub low_space: LowSpaceCfg,
     pub disk_map: DiskMapCfg,
+    pub hold: HoldCfg,
+}
+
+/// The opt-in holding area: apply moves files and folders aside instead of
+/// deleting them, and purges them after `days`.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct HoldCfg {
+    pub enabled: bool,
+    pub days: u64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -350,6 +360,16 @@ impl Default for Config {
             nix: NixCfg::default(),
             low_space: LowSpaceCfg::default(),
             disk_map: DiskMapCfg::default(),
+            hold: HoldCfg::default(),
+        }
+    }
+}
+
+impl Default for HoldCfg {
+    fn default() -> Self {
+        HoldCfg {
+            enabled: false,
+            days: 7,
         }
     }
 }
@@ -826,4 +846,14 @@ pub const DEFAULT_CONFIG_TOML: &str = r#"# cleaner configuration.
 
 [disk_map]
 # roots = ["~"]
+
+[hold]
+# Off by default: applied entries are deleted at once, with no undo.
+# When on, files and folders are moved to a holding area on the same
+# filesystem instead ($XDG_DATA_HOME/cleaner/hold) and can be put back with
+# `cleaner hold restore`. Holding frees no space: held items are purged
+# after this many days, at the start of a later apply or by `cleaner hold purge`.
+# Docker objects, Nix generations and tool commands are never held.
+# enabled = false
+# days = 7
 "#;

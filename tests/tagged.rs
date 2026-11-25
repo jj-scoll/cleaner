@@ -23,6 +23,7 @@ fn scan_with(home: &Path, cfg: Config) -> ScanOutput {
         tools: &tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     Artifacts.scan(&ctx, &mut InodeSet::default()).unwrap()
 }

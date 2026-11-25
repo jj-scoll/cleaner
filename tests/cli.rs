@@ -60,6 +60,7 @@ impl Env {
             .env("HOME", &home)
             .env("XDG_CONFIG_HOME", home.join(".config"))
             .env("XDG_STATE_HOME", home.join(".local/state"))
+            .env("XDG_DATA_HOME", home.join(".local/share"))
             .env("XDG_RUNTIME_DIR", self.tmp.path().join("run"))
             .env("TZ", "UTC")
             .env("PATH", &self.bin);
@@ -660,4 +661,103 @@ fn stats_rejects_bad_since() {
         .assert()
         .failure()
         .stderr(contains("YYYY-MM-DD"));
+}
+
+impl Env {
+    /// Turns the holding area on in config.toml.
+    fn enable_hold(&self) {
+        let p = self.home().join(".config/cleaner/config.toml");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, "[hold]\nenabled = true\ndays = 7\n").unwrap();
+    }
+}
+
+#[test]
+fn cli_apply_prompt_says_what_is_held() {
+    let env = Env::new();
+    env.enable_hold();
+    env.plan_and_show();
+    env.cmd(&["apply", "--only", "artifacts"])
+        .write_stdin("n\n")
+        .assert()
+        .code(1)
+        .stdout(contains("Will be held for 7 days"))
+        .stdout(contains("[artifacts] "))
+        .stdout(contains("Clean 1 item"));
+    assert!(env.artifact().exists());
+}
+
+#[test]
+fn cli_hold_list_restore_purge() {
+    let env = Env::new();
+    env.cmd(&["hold", "list"])
+        .assert()
+        .success()
+        .stdout(contains("Nothing held."));
+    env.enable_hold();
+    env.plan_and_show();
+    env.cmd(&["apply", "--yes", "--only", "artifacts"])
+        .assert()
+        .success()
+        .stdout(contains("held "))
+        .stdout(contains("frees nothing until"));
+    assert!(!env.artifact().exists());
+    env.cmd(&["hold", "list"])
+        .assert()
+        .success()
+        .stdout(contains("~/proj/target"));
+
+    let artifact = env.artifact();
+    let path = artifact.to_str().unwrap();
+    env.cmd(&["hold", "restore", path])
+        .assert()
+        .success()
+        .stdout(contains("Restored"));
+    assert!(env.artifact().join("debug/app").exists());
+    // Restoring again: nothing is held for it now.
+    env.cmd(&["hold", "restore", path]).assert().failure();
+    env.cmd(&["hold", "list"])
+        .assert()
+        .success()
+        .stdout(contains("Nothing held."));
+
+    // Hold it again, then purge everything.
+    env.plan_and_show();
+    env.cmd(&["apply", "--yes", "--only", "artifacts"])
+        .assert()
+        .success();
+    env.cmd(&["hold", "purge"])
+        .assert()
+        .success()
+        .stdout(contains("Nothing expired"));
+    env.cmd(&["hold", "purge", "--all"])
+        .write_stdin("n\n")
+        .assert()
+        .code(1);
+    env.cmd(&["hold", "purge", "--all", "--yes"])
+        .assert()
+        .success()
+        .stdout(contains("Purged 1"));
+    env.cmd(&["hold", "list"])
+        .assert()
+        .success()
+        .stdout(contains("Nothing held."));
+    assert!(!env.artifact().exists());
+}
+
+#[test]
+fn cli_hold_restore_refuses_overwrite() {
+    let env = Env::new();
+    env.enable_hold();
+    env.plan_and_show();
+    env.cmd(&["apply", "--yes", "--only", "artifacts"])
+        .assert()
+        .success();
+    mkfile(&env.artifact().join("new"), 3);
+    let artifact = env.artifact();
+    env.cmd(&["hold", "restore", artifact.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(contains("exists"));
+    assert!(env.artifact().join("new").exists());
 }

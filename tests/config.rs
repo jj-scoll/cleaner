@@ -277,6 +277,27 @@ fn old_config_with_roots_still_loads() {
 }
 
 #[test]
+fn hold_section_is_optional_and_tolerant() {
+    let (c, w) = cleaner::config::parse("").unwrap();
+    assert!(w.is_empty(), "{w:?}");
+    assert!(!c.hold.enabled, "holding must be opt-in");
+    assert_eq!(c.hold.days, 7);
+
+    let (c, w) = cleaner::config::parse("[hold]\nenabled = true\ndays = 3\nfuture = 1\n").unwrap();
+    assert!(c.hold.enabled);
+    assert_eq!(c.hold.days, 3);
+    assert_eq!(w, ["unknown config key: hold.future"]);
+
+    let (c, w) = cleaner::config::parse("[hold]\nenabled = true\n").unwrap();
+    assert!(w.is_empty(), "{w:?}");
+    assert_eq!((c.hold.enabled, c.hold.days), (true, 7));
+
+    let t: toml::Table = toml::from_str(&uncomment(DEFAULT_CONFIG_TOML)).unwrap();
+    assert_eq!(t["hold"]["enabled"].as_bool(), Some(false));
+    assert_eq!(t["hold"]["days"].as_integer(), Some(7));
+}
+
+#[test]
 fn idle_defaults_plan4() {
     let c = Config::default();
     assert_eq!(c.idle_folders.min_bytes, 1 << 30);

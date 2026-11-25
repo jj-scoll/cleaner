@@ -100,6 +100,7 @@ fn with_ctx<R>(home: &Path, config: &Config, f: impl FnOnce(&ScanCtx) -> R) -> R
         tools: &tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     f(&ctx)
 }

@@ -1,7 +1,7 @@
 //! Plan and apply across all categories (spec §5.1): one shared inode set
 //! for the scan; lock, re-validate, delete, measure and log for apply.
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -45,6 +45,7 @@ impl Ctx {
             tools: &*self.tools,
             euid: rustix::process::geteuid().as_raw(),
             usage: self.usage.as_ref(),
+            hold: None,
         }
     }
 }
@@ -172,6 +173,8 @@ pub struct RunReport {
     pub results: Vec<(String, Outcome)>,
     /// (filesystem label, avail after − avail before) in bytes.
     pub freed_by_fs: Vec<(String, i64)>,
+    /// Expired hold entries purged before anything else was applied.
+    pub purged: Vec<crate::hold::Purged>,
 }
 
 /// Every root string the config names: `scan_roots`, the artifacts/worktrees/nix
@@ -278,9 +281,17 @@ pub fn apply_plan_with(
     let fs_paths = filesystem_paths(&ctx.config, &ctx.paths.home);
     let before = crate::disk::usage(&fs_paths);
 
+    let mut lines = Vec::new();
+    let purged = purge_expired(ctx, &run_id, plan, &mut lines);
+    // Opened (and created) only when holding is on; `Err` skips every entry it would hold.
+    let area = ctx
+        .config
+        .hold
+        .enabled
+        .then(|| crate::hold::Area::open(&ctx.paths.hold_dir));
+
     let sc = ctx.scan_ctx();
     let mut results = Vec::new();
-    let mut lines = Vec::new();
     let chosen: Vec<&Entry> = plan
         .entries
         .iter()
@@ -293,14 +304,50 @@ pub fn apply_plan_with(
             total,
             current: entry.title.clone(),
         });
-        let outcome = match cats.iter().find(|c| c.id() == entry.category) {
-            Some(cat) => cat.apply(entry, &sc),
-            None => Outcome::Skipped {
+        let held_area = area.as_ref().filter(|_| crate::hold::holdable(entry));
+        let outcome = match (cats.iter().find(|c| c.id() == entry.category), held_area) {
+            (None, _) => Outcome::Skipped {
                 reason: format!("category {} is not enabled", entry.category),
             },
+            (Some(cat), None) => cat.apply(entry, &sc),
+            (Some(_), Some(Err(e))) => Outcome::Skipped {
+                reason: format!("holding area unavailable ({e}); left in place, not deleted"),
+            },
+            (Some(cat), Some(Ok(area))) => {
+                let to = crate::hold::HoldTo {
+                    area,
+                    plan_id: &plan.id,
+                    entry_id: &entry.id,
+                    category: &entry.category,
+                    title: &entry.title,
+                    now: ctx.now,
+                };
+                cat.apply(
+                    entry,
+                    &ScanCtx {
+                        hold: Some(to),
+                        ..ctx.scan_ctx()
+                    },
+                )
+            }
         };
         let (word, bytes, detail) = match &outcome {
             Outcome::Deleted { bytes, failures } => ("deleted", *bytes, failures.join("; ")),
+            Outcome::Held {
+                id,
+                bytes,
+                failures,
+            } => {
+                let mut d = format!(
+                    "moved {} to hold entry {id}; frees nothing until purged",
+                    crate::fmt::human_bytes(*bytes)
+                );
+                if !failures.is_empty() {
+                    d.push_str("; ");
+                    d.push_str(&failures.join("; "));
+                }
+                ("held", 0, d)
+            }
             Outcome::Skipped { reason } => ("skipped", 0, reason.clone()),
             Outcome::Failed { error } => ("failed", 0, error.clone()),
         };
@@ -352,12 +399,137 @@ pub fn apply_plan_with(
         run_id,
         results,
         freed_by_fs,
+        purged,
     })
+}
+
+/// Purges hold entries older than `[hold] days`, whether or not holding is
+/// on now (turning it off must not strand what it already holds), and logs
+/// one `hold` line per entry. Runs only inside an apply the user started,
+/// so nothing is ever deleted unattended.
+fn purge_expired(
+    ctx: &Ctx,
+    run_id: &str,
+    plan: &Plan,
+    lines: &mut Vec<LogLine>,
+) -> Vec<crate::hold::Purged> {
+    let cutoff = crate::hold::cutoff(ctx.now, ctx.config.hold.days);
+    let purged = match crate::hold::purge(&ctx.paths.hold_dir, Some(cutoff)) {
+        Ok(p) => p,
+        Err(e) => {
+            lines.push(hold_line(
+                run_id,
+                &plan.id,
+                "holding area",
+                "failed",
+                0,
+                format!(
+                    "expiry purge skipped: {}: {e}",
+                    ctx.paths.hold_dir.display()
+                ),
+            ));
+            return Vec::new();
+        }
+    };
+    let why = format!(
+        "expired after {}",
+        crate::fmt::plural(ctx.config.hold.days, "day")
+    );
+    lines.extend(
+        purged
+            .iter()
+            .map(|p| purged_line(run_id, &plan.id, p, &why)),
+    );
+    purged
+}
+
+fn purged_line(run_id: &str, plan_id: &str, p: &crate::hold::Purged, why: &str) -> LogLine {
+    let title = format!("hold entry {} ({})", p.held.id, p.held.title);
+    match &p.result {
+        Ok(freed) => hold_line(run_id, plan_id, &title, "deleted", *freed, why.into()),
+        Err(e) => hold_line(run_id, plan_id, &title, "failed", 0, e.clone()),
+    }
+}
+
+/// `cleaner hold purge`: under the run lock, deletes the hold entries held
+/// at or before `cutoff` (every one if `None`) and logs each (`why` is the
+/// detail of a successful line).
+pub fn purge_hold(
+    paths: &Paths,
+    cutoff: Option<i64>,
+    why: &str,
+) -> anyhow::Result<Vec<crate::hold::Purged>> {
+    let _lock = crate::lock::acquire(&paths.lock_file)?;
+    let purged = crate::hold::purge(&paths.hold_dir, cutoff)
+        .with_context(|| format!("holding area {}", paths.hold_dir.display()))?;
+    let run_id = Plan::new_id(jiff::Timestamp::now().as_second());
+    let lines: Vec<LogLine> = purged
+        .iter()
+        .map(|p| purged_line(&run_id, "", p, why))
+        .collect();
+    crate::log::append(&paths.log_file, &lines, None)?;
+    Ok(purged)
+}
+
+/// `cleaner hold restore`: `hold::restore` under the run lock, logged as
+/// one `restored` line per path put back.
+pub fn restore_held(
+    paths: &Paths,
+    pick: crate::hold::Pick,
+) -> anyhow::Result<(crate::hold::Held, Vec<PathBuf>)> {
+    let _lock = crate::lock::acquire(&paths.lock_file)?;
+    let (held, restored) = crate::hold::restore(&paths.hold_dir, pick)?;
+    let run_id = Plan::new_id(jiff::Timestamp::now().as_second());
+    let lines: Vec<LogLine> = restored
+        .iter()
+        .map(|p| {
+            let mut l = hold_line(
+                &run_id,
+                &held.plan_id,
+                &held.title,
+                "restored",
+                0,
+                format!("from hold entry {} to {}", held.id, p.display()),
+            );
+            l.entry_id = held.entry_id.clone();
+            l.category = held.category.clone();
+            l
+        })
+        .collect();
+    crate::log::append(&paths.log_file, &lines, None)?;
+    Ok((held, restored))
+}
+
+fn hold_line(
+    run_id: &str,
+    plan_id: &str,
+    title: &str,
+    outcome: &str,
+    bytes: u64,
+    detail: String,
+) -> LogLine {
+    LogLine {
+        time: jiff::Timestamp::now().as_second(),
+        run_id: run_id.into(),
+        plan_id: plan_id.into(),
+        entry_id: "hold:purge".into(),
+        category: "hold".into(),
+        title: title.into(),
+        outcome: outcome.into(),
+        bytes,
+        detail,
+    }
+}
+
+/// Protects the user's `protect` list and the holding area: no scan ever
+/// offers what is already held, or a folder containing it.
+pub fn protector_for(paths: &Paths, config: &Config) -> Protector {
+    Protector::new(&paths.home, &config.protect).with_root(paths.hold_dir.clone())
 }
 
 fn make_ctx(paths: &Paths, config: &Config, now: i64) -> Ctx {
     Ctx {
-        protector: Protector::new(&paths.home, &config.protect),
+        protector: protector_for(paths, config),
         paths: paths.clone(),
         config: config.clone(),
         now,

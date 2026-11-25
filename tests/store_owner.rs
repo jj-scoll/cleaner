@@ -63,6 +63,7 @@ fn with_ctx<R>(home: &Path, euid: u32, f: impl FnOnce(&ScanCtx) -> R) -> R {
         tools: &tools,
         euid,
         usage: None,
+        hold: None,
     };
     f(&ctx)
 }

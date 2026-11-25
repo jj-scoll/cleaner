@@ -63,6 +63,7 @@ fn with_tools<R>(
         tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     f(&ctx)
 }
@@ -706,6 +707,7 @@ fn terragrunt_inf_root_owned_is_skip() {
         tools: &tools,
         euid: common::my_uid() + 1,
         usage: None,
+        hold: None,
     };
     let out = Caches.scan(&ctx, &mut InodeSet::default()).unwrap();
     assert!(store_entry(&out, &root).is_none(), "{:?}", out.entries);

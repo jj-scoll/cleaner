@@ -6,6 +6,7 @@ use std::path::Path;
 
 use super::{category_label, category_order};
 use crate::fmt::{human_bytes, plural};
+use crate::hold::{Fate, Preview};
 use crate::object::Object;
 use crate::plan::{Entry, EntryKind, Plan, Skip};
 
@@ -45,6 +46,8 @@ pub struct ReviewModel {
     plan: Plan,
     selected: BTreeSet<String>,
     sort: Sort,
+    /// Set when holding is on: what applying each entry will do.
+    hold: Option<Preview>,
 }
 
 /// How a group's rows are ordered.
@@ -179,7 +182,14 @@ impl ReviewModel {
             plan,
             selected,
             sort: Sort::default(),
+            hold: None,
         }
+    }
+
+    /// What `hold::preview` says applying each entry will do (`None`:
+    /// holding is off), for the confirmation text.
+    pub fn set_hold(&mut self, hold: Option<Preview>) {
+        self.hold = hold;
     }
 
     pub fn sort(&self) -> Sort {
@@ -296,6 +306,83 @@ impl ReviewModel {
     /// The confirmation dialog's text for the current selection.
     pub fn confirm(&self, filter: Option<&str>) -> Confirm {
         let n = self.chosen(filter).count();
+        if let Some(hold) = &self.hold {
+            return self.confirm_hold(hold, filter, n);
+        }
+        let closure = self.chosen(filter).any(Entry::is_closure_estimate);
+        // A closure estimate is never stated as an exact size (D5).
+        let mut body = format!(
+            "{}{} will be deleted now. This cannot be undone.",
+            if closure { "About " } else { "" },
+            human_bytes(self.selected_bytes(filter))
+        );
+        self.push_notes(&mut body, filter);
+        Confirm {
+            heading: format!("Delete {}?", plural(n, "item")),
+            body,
+        }
+    }
+
+    /// The confirmation while holding is on: which entries are held, which
+    /// skipped (and why), which deleted for good.
+    fn confirm_hold(&self, hold: &Preview, filter: Option<&str>, n: usize) -> Confirm {
+        let fate = |e: &Entry| hold.fates.get(&e.id).cloned().unwrap_or(Fate::Permanent);
+        let will = |k: usize| if k == 1 { "item will" } else { "items will" };
+        let mut parts = Vec::new();
+
+        let held: Vec<&Entry> = self
+            .chosen(filter)
+            .filter(|e| fate(e) == Fate::Held)
+            .collect();
+        if !held.is_empty() {
+            parts.push(format!(
+                "{} {} ({}) will move to the holding area for {}; restore with `cleaner hold restore`. Holding frees no space until held items are purged.",
+                held.len(),
+                if held.len() == 1 { "item" } else { "items" },
+                human_bytes(held.iter().map(|e| e.bytes).sum()),
+                plural(hold.days, "day"),
+            ));
+        }
+        let mut reasons: Vec<(String, usize)> = Vec::new();
+        for e in self.chosen(filter) {
+            if let Fate::Skipped(r) = fate(e) {
+                match reasons.iter_mut().find(|(x, _)| *x == r) {
+                    Some((_, k)) => *k += 1,
+                    None => reasons.push((r, 1)),
+                }
+            }
+        }
+        for (r, k) in reasons {
+            let cant = if k == 1 { "item can't" } else { "items can't" };
+            parts.push(format!("{k} {cant} be held ({r}) and will be skipped."));
+        }
+        let gone: Vec<&Entry> = self
+            .chosen(filter)
+            .filter(|e| fate(e) == Fate::Permanent)
+            .collect();
+        if !gone.is_empty() {
+            const SHOWN: usize = 5;
+            let mut titles: Vec<&str> = gone.iter().take(SHOWN).map(|e| e.title.as_str()).collect();
+            let more = gone.len().saturating_sub(SHOWN);
+            let more = (more > 0).then(|| format!("and {more} more"));
+            titles.extend(more.as_deref());
+            parts.push(format!(
+                "{} {} be deleted now and cannot be restored: {}.",
+                gone.len(),
+                will(gone.len()),
+                titles.join(", ")
+            ));
+        }
+        let mut body = parts.join(" ");
+        self.push_notes(&mut body, filter);
+        Confirm {
+            heading: format!("Clean {}?", plural(n, "item")),
+            body,
+        }
+    }
+
+    /// Appends the estimate and password notes for the current selection.
+    fn push_notes(&self, body: &mut String, filter: Option<&str>) {
         let rule = self
             .chosen(filter)
             .any(|e| matches!(e.kind, EntryKind::StoreRule { .. }));
@@ -311,12 +398,6 @@ impl ReviewModel {
                 }
             )
         });
-        // A closure estimate is never stated as an exact size (D5).
-        let mut body = format!(
-            "{}{} will be deleted now. This cannot be undone.",
-            if closure { "About " } else { "" },
-            human_bytes(self.selected_bytes(filter))
-        );
         if rule {
             body.push_str(" Cache rule sizes are estimates.");
         }
@@ -328,10 +409,6 @@ impl ReviewModel {
         }
         if root {
             body.push_str(" You'll be asked for your password for the system generations.");
-        }
-        Confirm {
-            heading: format!("Delete {}?", plural(n, "item")),
-            body,
         }
     }
 }

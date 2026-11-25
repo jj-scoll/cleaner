@@ -21,6 +21,7 @@ fn with_ctx<R>(home: &Path, cfg: Config, f: impl FnOnce(&ScanCtx) -> R) -> R {
         tools: &tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     f(&ctx)
 }

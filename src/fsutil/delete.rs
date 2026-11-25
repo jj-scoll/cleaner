@@ -64,6 +64,22 @@ pub fn delete_tree_on_dev(path: &Path, dev: u64) -> Result<u64, DeleteError> {
     delete_entry(parent_fd.as_fd(), name, path, dev, false)
 }
 
+/// Like [`delete_tree_on_dev`], but `name` is looked up in the already open
+/// directory `dir_fd` (which must be on `dev`), so no path is re-resolved.
+/// `shown` is the path used in errors.
+pub fn delete_at(
+    dir_fd: BorrowedFd<'_>,
+    name: &OsStr,
+    shown: &Path,
+    dev: u64,
+) -> Result<u64, DeleteError> {
+    #[allow(clippy::unnecessary_cast)]
+    if fstat(dir_fd)?.st_dev as u64 != dev {
+        return Err(DeleteError::CrossesMount(shown.to_path_buf()));
+    }
+    delete_entry(dir_fd, name, shown, dev, false)
+}
+
 /// Deletes `name` inside `dir_fd`. `may_chmod_dir` says whether `dir_fd` is
 /// inside the tree being deleted (and so may be made writable to proceed).
 fn delete_entry<N: rustix::path::Arg + Copy>(

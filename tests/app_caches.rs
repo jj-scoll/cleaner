@@ -84,6 +84,7 @@ impl Fixture {
             tools: &tools,
             euid: common::my_uid(),
             usage: None,
+            hold: None,
         };
         f(
             &ctx,
@@ -494,6 +495,7 @@ fn foreign_app_root_yields_one_skip() {
         tools: &tools,
         euid: common::my_uid() + 1,
         usage: None,
+        hold: None,
     };
     let out = AppCaches {
         proc_root: f.procs.clone(),

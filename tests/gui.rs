@@ -600,6 +600,25 @@ fn settings_docker_days_at_least_one() {
     }
 }
 
+/// The holding area is opt-in: a switch (off by default) and a days spin.
+fn settings_has_hold_toggle_and_days() {
+    let page = SettingsPage::new(&Config::default(), false);
+    let t = texts(&page.page());
+    assert_has(&t, "Holding area");
+    let switch = find_row(page.page().upcast_ref(), "Hold instead of deleting")
+        .expect("hold switch")
+        .downcast::<adw::SwitchRow>()
+        .expect("a switch row");
+    assert!(!switch.is_active(), "holding must default to off");
+    let rows = spin_rows(page.page().upcast_ref());
+    let days = rows
+        .iter()
+        .find(|r| r.title() == "Purge held items after (days)")
+        .expect("hold days spin");
+    assert_eq!(days.adjustment().lower(), 1.0);
+    assert_eq!(days.value(), 7.0);
+}
+
 /// While a clean runs, closing the window is refused (the process would exit
 /// mid-delete and the run's log lines would never be written); after, it closes.
 fn close_blocked_while_cleaning() {
@@ -889,6 +908,10 @@ fn main() {
         (
             "settings_counts_one_store_and_app",
             settings_counts_one_store_and_app,
+        ),
+        (
+            "settings_has_hold_toggle_and_days",
+            settings_has_hold_toggle_and_days,
         ),
         ("close_blocked_while_cleaning", close_blocked_while_cleaning),
         ("usage_page_lists_rows", usage_page_lists_rows),

@@ -265,6 +265,8 @@ struct Inner {
     idle_enabled: adw::SwitchRow,
     idle_days: adw::SpinRow,
     idle_min: Scaled,
+    hold_enabled: adw::SwitchRow,
+    hold_days: adw::SpinRow,
     on_save: RefCell<Option<OnSave>>,
 }
 
@@ -315,6 +317,8 @@ impl Inner {
         c.nix.keep = self.nix_keep.value().round() as usize;
         c.nix.devbox_idle_days = self.devbox_idle.value().round() as u64;
         c.nix.gc = self.nix_gc.is_active();
+        c.hold.enabled = self.hold_enabled.is_active();
+        c.hold.days = self.hold_days.value().round() as u64;
         c
     }
 
@@ -673,6 +677,24 @@ impl SettingsPage {
         idle.add(&idle_days);
         idle.add(&idle_min.row);
 
+        let hold = group(
+            "Holding area",
+            Some(
+                "Move files and folders aside instead of deleting them, restorable with `cleaner hold restore`. Holding frees no space until held items are purged. Docker, Nix and tool clean-ups are always permanent.",
+            ),
+        );
+        let hold_enabled = switch("Hold instead of deleting", config.hold.enabled);
+        let hold_days = spin(
+            "Purge held items after (days)",
+            1.0,
+            36500.0,
+            1.0,
+            0,
+            config.hold.days as f64,
+        );
+        hold.add(&hold_enabled);
+        hold.add(&hold_days);
+
         for g in [
             &general,
             &protected,
@@ -688,6 +710,7 @@ impl SettingsPage {
             &rules_group,
             &trash,
             &idle,
+            &hold,
         ] {
             prefs.add(g);
             g.set_sensitive(!read_only);
@@ -756,6 +779,8 @@ impl SettingsPage {
             idle_enabled,
             idle_days,
             idle_min,
+            hold_enabled,
+            hold_days,
             on_save: RefCell::default(),
         });
         let weak = Rc::downgrade(&inner);

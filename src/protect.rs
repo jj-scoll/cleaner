@@ -51,6 +51,12 @@ impl Protector {
         Protector { roots }
     }
 
+    /// Also protects `root` (and so everything at, below or above it).
+    pub fn with_root(mut self, root: PathBuf) -> Protector {
+        self.roots.push(root);
+        self
+    }
+
     /// True if `p` is inside a protected root, contains one (deleting `p`
     /// would delete it), or has a `vendored` or `.git` component.
     pub fn is_protected(&self, p: &Path) -> bool {

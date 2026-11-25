@@ -38,6 +38,7 @@ fn with_ctx<R>(tools: &FakeRunner, f: impl FnOnce(&ScanCtx) -> R) -> R {
         tools,
         euid: common::my_uid(),
         usage: None,
+        hold: None,
     };
     f(&ctx)
 }

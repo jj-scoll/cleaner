@@ -36,6 +36,7 @@ fn scan_with(
         tools: &tools,
         euid: common::my_uid(),
         usage: idx,
+        hold: None,
     };
     LargeOld.scan(&ctx, &mut InodeSet::default()).unwrap()
 }

@@ -1,5 +1,5 @@
 //! The `cleaner` commands (spec §7.1): plan, show, review, apply, explain,
-//! status, log, stats, timer.
+//! status, log, stats, timer, hold.
 
 use anyhow::{Context, bail};
 use clap::{CommandFactory, Parser, Subcommand};
@@ -55,7 +55,7 @@ pub enum Cmd {
         /// Plan id (default: the latest plan).
         plan: Option<String>,
     },
-    /// Delete the selected entries of a plan.
+    /// Delete (or, with `[hold]` on, hold) the selected entries of a plan.
     Apply {
         /// Plan id (default: the latest plan, if `cleaner show` printed it).
         plan: Option<String>,
@@ -108,6 +108,31 @@ pub enum Cmd {
         #[command(subcommand)]
         action: TimerCmd,
     },
+    /// The opt-in holding area (`[hold] enabled = true`): list, restore, purge.
+    Hold {
+        #[command(subcommand)]
+        action: HoldCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum HoldCmd {
+    /// What is held, where it came from, and when it expires.
+    List,
+    /// Move held items back where they were (never over anything there now).
+    Restore {
+        /// A hold id (from `cleaner hold list`) or an original path.
+        target: String,
+    },
+    /// Delete expired held items now (all of them with --all).
+    Purge {
+        /// Every held item, not only expired ones.
+        #[arg(long)]
+        all: bool,
+        /// Don't ask for confirmation (with --all).
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -140,6 +165,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         Some(Cmd::Log { since, json }) => cmd_log(since, json),
         Some(Cmd::Stats { json, since }) => cmd_stats(json, since.as_deref()),
         Some(Cmd::Timer { action }) => cmd_timer(action),
+        Some(Cmd::Hold { action }) => cmd_hold(action),
     }
 }
 
@@ -406,9 +432,14 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
     }
     let total: u64 = chosen.iter().map(|e| e.bytes).sum();
     println!("Plan {} (created {})", plan.id, local_time(plan.created));
+    let preview = cleaner::hold::preview(&plan, &paths.hold_dir, &config.hold);
+    if let Some(p) = &preview {
+        print_fates(p, &chosen);
+    }
     if !yes {
         print!(
-            "Delete {} ({})? [y/N] ",
+            "{} {} ({})? [y/N] ",
+            if preview.is_some() { "Clean" } else { "Delete" },
             plural(chosen.len(), "item"),
             human_bytes(total)
         );
@@ -469,8 +500,32 @@ fn print_report(plan: &Plan, report: &cleaner::engine::RunReport) {
                     println!("                    ! {f}");
                 }
             }
+            Outcome::Held {
+                id: hold_id,
+                bytes,
+                failures,
+            } => {
+                println!(
+                    "held    {:>10}  {label}  (hold entry {hold_id}; frees nothing until purged)",
+                    human_bytes(*bytes)
+                );
+                for f in failures {
+                    println!("                    ! {f}");
+                }
+            }
             Outcome::Skipped { reason } => println!("skipped {:>10}  {label}: {reason}", ""),
             Outcome::Failed { error } => println!("failed  {:>10}  {label}: {error}", ""),
+        }
+    }
+    for p in &report.purged {
+        match &p.result {
+            Ok(freed) => println!(
+                "purged  {:>10}  hold entry {} ({}): expired",
+                human_bytes(*freed),
+                p.held.id,
+                p.held.title
+            ),
+            Err(e) => println!("failed  {:>10}  hold entry {}: {e}", "", p.held.id),
         }
     }
     println!("Freed (filesystem free space after minus before):");
@@ -578,6 +633,172 @@ fn cmd_explain(path: &std::path::Path, id: Option<String>, json: bool) -> anyhow
         println!("  rule:         {}", x.rule);
     }
     Ok(0)
+}
+
+/// Lists, before the prompt, what holding will do with each chosen entry.
+fn print_fates(p: &cleaner::hold::Preview, chosen: &[&Entry]) {
+    use cleaner::hold::Fate;
+    let fate = |e: &Entry| p.fates.get(&e.id).cloned().unwrap_or(Fate::Permanent);
+    let held: Vec<&&Entry> = chosen.iter().filter(|e| fate(e) == Fate::Held).collect();
+    if !held.is_empty() {
+        println!(
+            "Will be held for {} (restore with `cleaner hold restore`; holding frees no space until purged):",
+            plural(p.days, "day")
+        );
+        for e in held {
+            println!(
+                "  {:>10}  [{}] {}",
+                human_bytes(e.bytes),
+                e.category,
+                e.title
+            );
+        }
+    }
+    let skipped: Vec<(&&Entry, String)> = chosen
+        .iter()
+        .filter_map(|e| match fate(e) {
+            Fate::Skipped(r) => Some((e, r)),
+            _ => None,
+        })
+        .collect();
+    if !skipped.is_empty() {
+        println!("Can't be held, so will be skipped:");
+        for (e, r) in skipped {
+            println!("  [{}] {}: {r}", e.category, e.title);
+        }
+    }
+    let gone: Vec<&&Entry> = chosen
+        .iter()
+        .filter(|e| fate(e) == Fate::Permanent)
+        .collect();
+    if !gone.is_empty() {
+        println!("Will be deleted now and cannot be restored:");
+        for e in gone {
+            println!(
+                "  {:>10}  [{}] {}",
+                human_bytes(e.bytes),
+                e.category,
+                e.title
+            );
+        }
+    }
+}
+
+/// "1 hold entry", "2 hold entries".
+fn entries(n: usize) -> String {
+    format!("{n} hold {}", if n == 1 { "entry" } else { "entries" })
+}
+
+fn cmd_hold(action: HoldCmd) -> anyhow::Result<i32> {
+    use cleaner::hold::Pick;
+    let paths = Paths::from_env()?;
+    match action {
+        HoldCmd::List => {
+            let config = load_config(&paths)?;
+            let held = cleaner::hold::list(&paths.hold_dir)
+                .with_context(|| format!("holding area {}", paths.hold_dir.display()))?;
+            if held.is_empty() {
+                println!("Nothing held.");
+                return Ok(0);
+            }
+            for h in &held {
+                let expires = h.held_at + config.hold.days as i64 * 86_400;
+                println!(
+                    "{}  {:>10}  held {}, purged after {}  [{}] {}",
+                    h.id,
+                    human_bytes(h.bytes()),
+                    local_time(h.held_at),
+                    local_time(expires),
+                    h.category,
+                    h.title
+                );
+                if let Some(problem) = &h.problem {
+                    println!("    ! {problem}");
+                }
+                const SHOWN: usize = 5;
+                for i in h.items.iter().take(SHOWN) {
+                    println!("    {}", cleaner::paths::tilde(&i.original, &paths.home));
+                }
+                if h.items.len() > SHOWN {
+                    println!("    and {} more", h.items.len() - SHOWN);
+                }
+            }
+            let total: u64 = held.iter().map(|h| h.bytes()).sum();
+            println!(
+                "Held: {} in {} (frees nothing until purged)",
+                human_bytes(total),
+                entries(held.len())
+            );
+            Ok(0)
+        }
+        HoldCmd::Restore { target } => {
+            let path;
+            let pick = if !target.contains('/') && target.starts_with(|c: char| c.is_ascii_digit())
+            {
+                Pick::Id(&target)
+            } else {
+                path = std::path::absolute(&target)?;
+                Pick::Path(&path)
+            };
+            let (_, restored) = cleaner::engine::restore_held(&paths, pick)?;
+            for p in restored {
+                println!("Restored {}", p.display());
+            }
+            Ok(0)
+        }
+        HoldCmd::Purge { all, yes } => {
+            let config = load_config(&paths)?;
+            let cutoff = (!all).then(|| cleaner::hold::cutoff(now(), config.hold.days));
+            if all {
+                let held = cleaner::hold::list(&paths.hold_dir)?;
+                if held.is_empty() {
+                    println!("Nothing held.");
+                    return Ok(0);
+                }
+                if !yes {
+                    print!(
+                        "Permanently delete {} ({})? [y/N] ",
+                        entries(held.len()),
+                        human_bytes(held.iter().map(|h| h.bytes()).sum())
+                    );
+                    std::io::stdout().flush()?;
+                    let mut answer = String::new();
+                    std::io::stdin().lock().read_line(&mut answer)?;
+                    if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
+                        eprintln!("Aborted; nothing deleted.");
+                        return Ok(1);
+                    }
+                }
+            }
+            let why = if all {
+                "purged by `cleaner hold purge --all`".to_string()
+            } else {
+                format!("expired after {}", plural(config.hold.days, "day"))
+            };
+            let purged = cleaner::engine::purge_hold(&paths, cutoff, &why)?;
+            if purged.is_empty() {
+                println!("Nothing expired.");
+                return Ok(0);
+            }
+            let mut freed = 0;
+            let mut failed = 0;
+            for p in &purged {
+                match &p.result {
+                    Ok(b) => freed += b,
+                    Err(e) => {
+                        failed += 1;
+                        println!("failed  hold entry {}: {e}", p.held.id);
+                    }
+                }
+            }
+            println!(
+                "Purged {} ({} freed)",
+                entries(purged.len() - failed),
+                human_bytes(freed)
+            );
+            Ok(if failed > 0 { 1 } else { 0 })
+        }
+    }
 }
 
 fn cmd_status(json: bool) -> anyhow::Result<i32> {
