@@ -92,11 +92,13 @@ fn status_line(app: &App) -> String {
     let mut text = format!(
         "Selected: {}, {}",
         plural(n, "item"),
-        human_bytes(app.model().selected_bytes(None))
+        human_bytes(app.selected_bytes())
     );
     let hidden = app.hidden_selected();
     if hidden > 0 {
-        text.push_str(&format!(" ({hidden} selected hidden by the filter)"));
+        text.push_str(&format!(
+            " ({hidden} selected hidden by the filter, not deleted)"
+        ));
     }
     text
 }
@@ -113,7 +115,7 @@ fn help_line(screen: Screen) -> &'static str {
 
 /// The GUI's confirmation text over the list, then what will be deleted.
 fn confirm(f: &mut Frame, app: &App, area: Rect) {
-    let c = app.model().confirm(None);
+    let c = app.confirm();
     let area = area.inner(Margin::new(2, 1));
     let ids = app.selected_ids();
     let chosen: Vec<_> = app
@@ -242,6 +244,26 @@ mod tests {
         assert!(screen[0].contains("filter: pi_"), "{}", screen[0]);
         find(&screen, "1 selected hidden by the filter");
         assert!(!screen.iter().any(|l| l.contains("old.zip")));
+    }
+
+    #[test]
+    fn filtered_counts_and_confirm_cover_only_visible_ticks() {
+        let mut a = app();
+        for c in "/pi".chars() {
+            a.handle(Key::Char(c));
+        }
+        a.handle(Key::Enter);
+        let screen = draw(&mut a, 100, 16);
+        find(&screen, "Selected: 1 item, 2.0 KiB");
+        find(&screen, "1 selected hidden by the filter, not deleted");
+        a.handle(Key::Enter);
+        let screen = draw(&mut a, 100, 16);
+        find(&screen, "Delete 1 item?");
+        find(
+            &screen,
+            "2.0 KiB will be deleted now. This cannot be undone.",
+        );
+        assert!(!screen.iter().any(|l| l.contains("old.zip")), "{screen:?}");
     }
 
     #[test]

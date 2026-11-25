@@ -4,7 +4,7 @@
 
 use crate::fmt::human_bytes;
 use crate::view::category_label;
-use crate::view::review::{ReviewModel, Sort, row_line};
+use crate::view::review::{Confirm, ReviewModel, Sort, row_line};
 
 /// A key press, as the reducer sees it (see `super::key_from_event`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -188,19 +188,49 @@ impl App {
         out
     }
 
-    /// The plan entry ids `Apply` would carry, in plan order.
+    /// The plan entry ids `Apply` would carry, in plan order: the ticked
+    /// entries the filter shows (ticks it hides are kept, not applied, as
+    /// with the GUI's category filter).
     pub fn selected_ids(&self) -> Vec<String> {
-        self.model.selected_ids(None)
+        let visible: std::collections::HashSet<String> = self
+            .lines()
+            .into_iter()
+            .filter_map(|l| match l.kind {
+                LineKind::Item { id, selected: true } => Some(id),
+                _ => None,
+            })
+            .collect();
+        let mut ids = self.model.selected_ids(None);
+        ids.retain(|id| visible.contains(id));
+        ids
+    }
+
+    /// The total size of `selected_ids`.
+    pub fn selected_bytes(&self) -> u64 {
+        let ids = self.selected_ids();
+        let plan = self.model.plan();
+        plan.entries
+            .iter()
+            .filter(|e| ids.contains(&e.id))
+            .map(|e| e.bytes)
+            .sum()
+    }
+
+    /// The GUI's confirmation text for `selected_ids` only.
+    pub fn confirm(&self) -> Confirm {
+        let mut shown = self.model.clone();
+        let ids = self.selected_ids();
+        for id in self.model.selected_ids(None) {
+            if !ids.contains(&id) {
+                shown.set(&id, false);
+            }
+        }
+        shown.confirm(None)
     }
 
     /// How many selected entries the filter hides.
     pub fn hidden_selected(&self) -> usize {
-        let visible = self
-            .lines()
-            .iter()
-            .filter(|l| matches!(l.kind, LineKind::Item { selected: true, .. }))
-            .count();
-        self.selected_ids().len() - visible
+        self.model.selected_ids(None).len() - self.selected_ids().len()
     }
 
     pub fn handle(&mut self, key: Key) -> Action {
@@ -247,7 +277,11 @@ impl App {
             Key::Char('/') => self.screen = Screen::Filter,
             Key::Enter => {
                 if self.selected_ids().is_empty() {
-                    self.message = Some("Nothing selected.".into());
+                    self.message = Some(if self.hidden_selected() > 0 {
+                        "Nothing selected under the filter.".into()
+                    } else {
+                        "Nothing selected.".into()
+                    });
                 } else {
                     self.screen = Screen::Confirm;
                 }
@@ -536,7 +570,7 @@ pub(crate) mod tests {
         // `a` only touches what the filter shows.
         goto(&mut a, "i:caches:0");
         press(&mut a, "a");
-        assert_eq!(a.selected_ids(), ["trash:0"]);
+        assert_eq!(a.model().selected_ids(None), ["trash:0"]);
         press(&mut a, "/");
         a.handle(Key::Esc);
         assert_eq!(a.filter(), "", "Esc clears the filter");
@@ -565,6 +599,33 @@ pub(crate) mod tests {
             press(&mut a, "y"),
             Action::Apply(vec!["trash:0".into(), "trash:1".into(), "caches:0".into()])
         );
+    }
+
+    #[test]
+    fn enter_applies_only_what_the_filter_shows() {
+        let mut a = app();
+        press(&mut a, "/");
+        press(&mut a, "pi");
+        a.handle(Key::Enter);
+        assert_eq!(a.hidden_selected(), 1, "old.zip is ticked but hidden");
+        assert_eq!(a.selected_ids(), ["caches:0"]);
+        a.handle(Key::Enter);
+        assert_eq!(a.screen(), Screen::Confirm);
+        assert_eq!(press(&mut a, "y"), Action::Apply(vec!["caches:0".into()]));
+        // The hidden tick is kept, and counts again once the filter is gone.
+        assert_eq!(a.model().selected_ids(None), ["trash:0", "caches:0"]);
+    }
+
+    #[test]
+    fn enter_with_only_hidden_ticks_explains() {
+        let mut a = app();
+        press(&mut a, "/");
+        press(&mut a, "b");
+        a.handle(Key::Enter);
+        assert_eq!(keys(&a), ["h:trash", "i:trash:1"]);
+        a.handle(Key::Enter);
+        assert_eq!(a.screen(), Screen::List, "nothing visible is ticked");
+        assert_eq!(a.message(), Some("Nothing selected under the filter."));
     }
 
     #[test]
