@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use cleaner::category::Outcome;
 use cleaner::config::{self, Config};
 use cleaner::engine::{apply_selected, filesystem_paths, plan_and_save, registry};
-use cleaner::fmt::human_bytes;
+use cleaner::fmt::{human_bytes, plural};
 use cleaner::notify::{DbusNotifier, gui_launch_command, notify_if_worth_it};
 use cleaner::paths::Paths;
 use cleaner::plan::{Entry, Plan};
@@ -179,7 +179,7 @@ fn cmd_plan(json: bool, notify: bool) -> anyhow::Result<i32> {
         println!("  {cat:<14} {:>4} selected  {:>10}{extra}", sel.len(), human_bytes(bytes));
     }
     let n = plan.entries.iter().filter(|e| e.selected).count();
-    println!("Total selected: {} in {n} items", human_bytes(plan.selected_bytes()));
+    println!("Total selected: {} in {}", human_bytes(plan.selected_bytes()), plural(n, "item"));
     if !plan.skipped.is_empty() {
         println!("Skipped: {} (see `cleaner show`)", plan.skipped.len());
     }
@@ -340,7 +340,7 @@ fn cmd_apply(id: Option<String>, only: &[String], yes: bool) -> anyhow::Result<i
     let total: u64 = chosen.iter().map(|e| e.bytes).sum();
     println!("Plan {} (created {})", plan.id, local_time(plan.created));
     if !yes {
-        print!("Delete {} items ({})? [y/N] ", chosen.len(), human_bytes(total));
+        print!("Delete {} ({})? [y/N] ", plural(chosen.len(), "item"), human_bytes(total));
         std::io::stdout().flush()?;
         let mut answer = String::new();
         std::io::stdin().lock().read_line(&mut answer)?;
@@ -427,10 +427,10 @@ fn cmd_status(json: bool) -> anyhow::Result<i32> {
     }
     match &latest {
         Some((p, _)) => println!(
-            "Latest plan: {} ({} selected in {} items)",
+            "Latest plan: {} ({} selected in {})",
             p.id,
             human_bytes(p.selected_bytes()),
-            p.entries.iter().filter(|e| e.selected).count()
+            plural(p.entries.iter().filter(|e| e.selected).count(), "item")
         ),
         None => println!("Latest plan: none"),
     }

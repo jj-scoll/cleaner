@@ -379,7 +379,7 @@ fn finished_worktree_artifacts_preselected() {
     let out = scan(h);
     let e = entry_for(&out, "wt/w");
     assert!(e.selected, "{e:?}");
-    assert!(e.reason.starts_with("active 1 days ago"), "{}", e.reason);
+    assert!(e.reason.starts_with("active 1 day ago"), "{}", e.reason);
     assert!(e.reason.ends_with("; worktree is finished"), "{}", e.reason);
 }
 

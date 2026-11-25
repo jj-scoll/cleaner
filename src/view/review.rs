@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use super::{category_label, category_order};
-use crate::fmt::human_bytes;
+use crate::fmt::{human_bytes, plural};
 use crate::object::Object;
 use crate::plan::{Entry, EntryKind, Plan, Skip};
 
@@ -255,6 +255,6 @@ impl ReviewModel {
         if root {
             body.push_str(" You'll be asked for your password for the system generations.");
         }
-        Confirm { heading: format!("Delete {n} items?"), body }
+        Confirm { heading: format!("Delete {}?", plural(n, "item")), body }
     }
 }

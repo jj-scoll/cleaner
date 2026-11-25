@@ -66,8 +66,8 @@ impl Category for AppCaches {
                     }
                     let (title, reason) = match label {
                         None => (
-                            format!("{}: {}", app.name, tilde(&rule.root, ctx.home)),
-                            format!("{} cache dirs", matches.len()),
+                            format!("{}: {}", app.name, crate::paths::tilde(&rule.root, ctx.home)),
+                            crate::fmt::plural(matches.len(), "cache dir"),
                         ),
                         Some(l) => (
                             format!("{} {l}", app.name),
@@ -111,13 +111,4 @@ impl Category for AppCaches {
 fn owner<'a>(apps: &'a [AppCfg], root: &Path, home: &Path) -> Option<&'a AppCfg> {
     apps.iter()
         .find(|a| a.dirs.iter().any(|d| crate::paths::expand(d, home).iter().any(|p| p == root)))
-}
-
-/// `path` with a leading `home` shown as `~`.
-fn tilde(path: &Path, home: &Path) -> String {
-    match path.strip_prefix(home) {
-        Ok(rel) if rel.as_os_str().is_empty() => "~".into(),
-        Ok(rel) => format!("~/{}", rel.display()),
-        Err(_) => path.display().to_string(),
-    }
 }

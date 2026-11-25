@@ -136,6 +136,7 @@ fn keep_newest_one_run() {
     let e = &out.entries[0];
     assert!(e.selected);
     assert_eq!(e.reason, "older run; keeping newest 1");
+    assert_eq!(e.title, "~/runs/a");
     let EntryKind::Item { targets } = &e.kind else { panic!("not an item") };
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].path, runs.join("a"));
@@ -155,11 +156,26 @@ fn caches_scan_entry_shape() {
     assert_eq!(e.category, "caches");
     assert!(e.selected);
     assert!(e.bytes > 0);
-    assert_eq!(e.title, pip.display().to_string());
-    assert_eq!(e.reason, "1 items untouched for 30+ days");
+    // Shown under `~`; the rule keeps the absolute path it deletes under.
+    assert_eq!(e.title, "~/.cache/pip");
+    assert_eq!(e.reason, "1 item untouched for 30+ days");
     let EntryKind::StoreRule { rule } = &e.kind else { panic!("not a store rule") };
     assert_eq!(rule.root, pip);
     assert_eq!(rule.unit, Unit::Files { recursive: true });
+}
+
+#[test]
+fn caches_reason_counts_items() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path();
+    let pip = home.join(".cache/pip");
+    for f in ["x", "y"] {
+        mkfile(&pip.join(f), 5000);
+        set_age(&pip.join(f), 40);
+    }
+    let out = with_ctx(home, &Config::default(), |ctx| Caches.scan(ctx, &mut InodeSet::default())).unwrap();
+    assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
+    assert_eq!(out.entries[0].reason, "2 items untouched for 30+ days");
 }
 
 #[test]
@@ -410,7 +426,7 @@ fn terragrunt_provider_version_is_the_unit() {
     age_tree(&new, 1);
     let out = caches_scan(home);
     let e = store_entry(&out, &tg.join("providers")).expect("providers entry");
-    assert_eq!(e.title, format!("{}/.cache/terragrunt/providers", home.display()));
+    assert_eq!(e.title, "~/.cache/terragrunt/providers");
     assert_eq!(entry_matches(e, home), vec![old]);
     assert!(out.entries.iter().all(|e| !e.title.ends_with("cas")), "{:?}", out.entries);
 }
@@ -482,8 +498,13 @@ fn tg_cache_not_double_listed() {
     let r1 = tg_run(home, "r1", 10);
     let r2 = tg_run(home, "r2", 5);
     let out = verify_tool_scan(home);
-    let r1s = r1.display().to_string();
-    let mentions: Vec<&Entry> = out.entries.iter().filter(|e| e.title.contains(&r1s)).collect();
+    // By the paths each entry acts on (titles are `~`-relative display text).
+    let covers_r1 = |e: &&Entry| match &e.kind {
+        EntryKind::Item { targets } => targets.iter().any(|t| t.path.starts_with(&r1)),
+        EntryKind::StoreRule { rule } => rule.root.starts_with(&r1),
+        _ => false,
+    };
+    let mentions: Vec<&Entry> = out.entries.iter().filter(covers_r1).collect();
     assert_eq!(mentions.len(), 1, "{:?}", out.entries);
     assert!(matches!(&mentions[0].kind, EntryKind::Item { targets } if targets[0].path == r1));
     assert!(store_entry(&out, &r2.join("tg-cache")).is_some());

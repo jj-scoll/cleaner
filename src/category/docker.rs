@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::category::{Category, Outcome, ScanCtx, ScanOutput, apply_default};
+use crate::fmt::plural;
 use crate::fsutil::measure::InodeSet;
 use crate::object::{DockerKind, DockerRef, Object, Operation};
 use crate::plan::{Entry, EntryKind, Skip};
@@ -161,10 +162,6 @@ fn is_anonymous(name: &str) -> bool {
     name.len() == 64 && name.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-fn plural(n: usize, word: &str) -> String {
-    if n == 1 { format!("{n} {word}") } else { format!("{n} {word}s") }
-}
-
 fn object(title: String, reason: &str, bytes: u64, selected: bool, refs: Vec<DockerRef>) -> Entry {
     Entry {
         id: String::new(),
@@ -250,8 +247,10 @@ impl Category for Docker {
             // never-started container has a zero FinishedAt: its creation.
             let days = |t: jiff::Timestamp| (ctx.now - t.as_second()) / DAY;
             let (reason, since) = match finished.iter().find(|(id, _)| id.starts_with(&c.id)).map(|(_, t)| *t) {
-                Some(t) if t.as_second() > 0 => (format!("stopped {} days ago", days(t).max(0)), Some(t)),
-                Some(_) => (format!("never started, created {} days ago", days(created).max(0)), Some(created)),
+                Some(t) if t.as_second() > 0 => (format!("stopped {} ago", plural(days(t).max(0), "day")), Some(t)),
+                Some(_) => {
+                    (format!("never started, created {} ago", plural(days(created).max(0), "day")), Some(created))
+                }
                 None => ("stopped, stop time unknown".to_string(), None),
             };
             let old = since.is_some_and(|t| ctx.now - t.as_second() > cfg.container_days as i64 * DAY);

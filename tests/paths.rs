@@ -1,8 +1,9 @@
 mod common;
 
-use cleaner::fmt::human_bytes;
-use cleaner::paths::{Paths, expand};
+use cleaner::fmt::{human_bytes, plural};
+use cleaner::paths::{Paths, expand, tilde};
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
 
 #[test]
@@ -41,6 +42,25 @@ fn expand_tilde_and_glob() {
 fn expand_missing_is_empty() {
     let tmp = TempDir::new().unwrap();
     assert!(expand("~/nope", tmp.path()).is_empty());
+}
+
+#[test]
+fn tilde_shows_home_as_tilde() {
+    let home = Path::new("/home/u");
+    assert_eq!(tilde(Path::new("/home/u"), home), "~");
+    assert_eq!(tilde(Path::new("/home/u/.cache/pip"), home), "~/.cache/pip");
+    // Component-wise: a sibling sharing the prefix is not under home.
+    assert_eq!(tilde(Path::new("/home/user2/x"), home), "/home/user2/x");
+    assert_eq!(tilde(Path::new("/var/tmp/x"), home), "/var/tmp/x");
+}
+
+#[test]
+fn plural_values() {
+    assert_eq!(plural(0usize, "item"), "0 items");
+    assert_eq!(plural(1usize, "item"), "1 item");
+    assert_eq!(plural(2usize, "item"), "2 items");
+    assert_eq!(plural(1i64, "day"), "1 day");
+    assert_eq!(plural(30u64, "day"), "30 days");
 }
 
 #[test]

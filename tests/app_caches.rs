@@ -322,7 +322,7 @@ fn chromium_model_is_its_own_row() {
     let out = f.scan();
     assert_eq!(out.entries.len(), 2, "{:?}", out.entries);
     let main = out.entries.iter().find(|e| e.title == "Chromium: ~/.config/chromium").unwrap();
-    assert_eq!(main.reason, "1 cache dirs");
+    assert_eq!(main.reason, "1 cache dir");
     let Unit::DirsNamed(names) = &rule_of(main).unit else { panic!("not DirsNamed") };
     assert!(!names.iter().any(|n| n == "OptGuideOnDeviceModel"), "{names:?}");
     let m = out.entries.iter().find(|e| e.title == "Chromium on-device AI model").unwrap();

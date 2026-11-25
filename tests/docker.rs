@@ -125,7 +125,7 @@ fn plans_from_df() {
     assert_eq!(refs(stale)[0].id, STALE);
     assert!(refs(stale)[0].created.is_some());
     let young = entry(&out, "container young_box");
-    assert_eq!(young.reason, "stopped 1 days ago");
+    assert_eq!(young.reason, "stopped 1 day ago");
     assert!(!young.selected);
 
     let dangling = entry(&out, "image b908dda6c4d7");

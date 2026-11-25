@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::category::store::scan_stores;
 use crate::category::{Category, Outcome, ScanCtx, ScanOutput, apply_default};
+use crate::fmt::plural;
 use crate::fsutil::measure::{InodeSet, measure};
 use crate::object::Operation;
 use crate::plan::{Entry, EntryKind, Skip, Target, fingerprint};
@@ -42,13 +43,13 @@ impl Category for Caches {
             &cfg.stores,
             ctx,
             seen,
-            &|n, days| format!("{n} items untouched for {days}+ days"),
+            &|n, days| format!("{} untouched for {days}+ days", plural(n, "item")),
             &|r| older.iter().any(|(o, _)| r.starts_with(o)),
         );
 
         for (child, keep) in &older {
             let reason = format!("older run; keeping newest {keep}");
-            if let Some(e) = item(child, &reason, true, seen) {
+            if let Some(e) = item(child, &reason, true, ctx.home, seen) {
                 out.entries.push(e);
             }
         }
@@ -81,7 +82,7 @@ impl Category for Caches {
                 continue;
             }
             let reason = "rustup is not installed; toolchain may still be used by an IDE";
-            if let Some(e) = item(&tc, reason, false, seen) {
+            if let Some(e) = item(&tc, reason, false, ctx.home, seen) {
                 out.report_only.push(e);
             }
         }
@@ -275,15 +276,15 @@ fn older_children(root: &Path, keep: usize, ctx: &ScanCtx) -> Vec<PathBuf> {
     kids.into_iter().skip(keep).map(|(_, p)| p).collect()
 }
 
-/// A one-target `Item` entry for `path`, or `None` if it vanished or is a
-/// symlink (`measure`/`fingerprint` refuse symlinks).
-fn item(path: &Path, reason: &str, selected: bool, seen: &mut InodeSet) -> Option<Entry> {
+/// A one-target `Item` entry for `path` (titled under `~`), or `None` if it
+/// vanished or is a symlink (`measure`/`fingerprint` refuse symlinks).
+fn item(path: &Path, reason: &str, selected: bool, home: &Path, seen: &mut InodeSet) -> Option<Entry> {
     let fp = fingerprint(path).ok()?;
     let bytes = measure(path, seen).ok()?.bytes;
     Some(Entry {
         id: String::new(),
         category: ID.into(),
-        title: path.display().to_string(),
+        title: crate::paths::tilde(path, home),
         kind: EntryKind::Item { targets: vec![Target { path: path.to_path_buf(), fp }] },
         bytes,
         reason: reason.into(),

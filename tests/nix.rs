@@ -280,6 +280,18 @@ fn devbox_stale_only() {
 }
 
 #[test]
+fn devbox_reason_one_day() {
+    let tmp = tempfile::tempdir().unwrap();
+    let h = tmp.path();
+    devbox(h, "p", 1);
+    let mut c = cfg(h);
+    c.nix.devbox_idle_days = 0;
+    let out = scan(h, &c, &nix_tools());
+    assert_eq!(out.entries.len(), 1, "{:?}", out.entries);
+    assert_eq!(out.entries[0].reason, "devbox project untouched for 1 day");
+}
+
+#[test]
 fn closure_estimate_diff() {
     let tools = FakeRunner::new()
         .respond(&format!("{PATH_INFO} -r {X}"), ok_out(&fixture()))

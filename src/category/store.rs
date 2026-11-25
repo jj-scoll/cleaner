@@ -301,7 +301,7 @@ pub fn scan_stores(
             out.entries.push(Entry {
                 id: String::new(),
                 category: category.into(),
-                title: rule.root.display().to_string(),
+                title: crate::paths::tilde(&rule.root, ctx.home),
                 bytes: matches.iter().map(|m| m.bytes).sum(),
                 reason: reason(matches.len(), cfg.max_age_days),
                 kind: EntryKind::StoreRule { rule },

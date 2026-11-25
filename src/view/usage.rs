@@ -4,7 +4,7 @@
 use jiff::tz::TimeZone;
 use std::path::{Path, PathBuf};
 
-use crate::fmt::{human_bytes, local_time};
+use crate::fmt::{human_bytes, local_time, plural};
 use crate::fsutil::usage::{Node, Tree, UsageIndex};
 use crate::object::Object;
 use crate::plan::{EntryKind, Plan};
@@ -84,7 +84,7 @@ pub fn level(index: &UsageIndex, path: &Path, plan: Option<&Plan>, now: i64, tz:
     rows.extend(unreadable);
     if node.other_count > 0 {
         rows.push(Row {
-            name: format!("other ({} items)", node.other_count),
+            name: format!("other ({})", plural(node.other_count, "item")),
             path: None,
             bytes: node.other_bytes,
             fraction: fraction(node.other_bytes, node.bytes),

@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::config::{Config, StoreCfg};
+use crate::fmt::plural;
 use crate::protect::BUILTIN_PROTECTED;
 use crate::settings::validate;
 
@@ -323,7 +324,7 @@ impl SettingsPage {
 
         let caches = group(
             "Tool caches",
-            Some(&format!("{} cache stores; edit config.toml to change them.", config.caches.stores.len())),
+            Some(&format!("{}; edit config.toml to change them.", plural(config.caches.stores.len(), "cache store"))),
         );
         let caches_enabled = switch("Enabled", config.caches.enabled);
         let uv_prune = switch("Offer uv cache prune", config.caches.uv_prune);
@@ -349,7 +350,10 @@ impl SettingsPage {
 
         let app_caches = group(
             "Browser and app caches",
-            Some(&format!("{} apps, skipped while running; edit config.toml to change them.", config.app_caches.apps.len())),
+            Some(&format!(
+                "{}, skipped while running; edit config.toml to change them.",
+                plural(config.app_caches.apps.len(), "app")
+            )),
         );
         let app_caches_enabled = switch("Enabled", config.app_caches.enabled);
         app_caches.add(&app_caches_enabled);

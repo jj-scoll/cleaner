@@ -223,6 +223,31 @@ fn cli_only_filters() {
     assert!(env.artifact().exists());
 }
 
+/// One selected entry (the pip cache): counts read "1 item", and the cache
+/// row is shown under `~` while the saved plan keeps its absolute root.
+#[test]
+fn cli_single_item_wording() {
+    let env = Env::new();
+    std::fs::remove_dir_all(env.home().join("proj")).unwrap();
+    std::fs::remove_dir_all(env.home().join("Downloads")).unwrap();
+    env.cmd(&["plan"]).assert().success().stdout(contains(" in 1 item\n"));
+    env.cmd(&["show"])
+        .assert()
+        .success()
+        .stdout(contains("~/.cache/pip  (1 item untouched for 30+ days)"));
+    env.cmd(&["status"]).assert().success().stdout(contains(" in 1 item)"));
+    env.cmd(&["apply"]).write_stdin("n\n").assert().code(1).stdout(contains("Delete 1 item ("));
+
+    let plan: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(env.plans_dir().join(format!("{}.json", env.plan_ids()[0]))).unwrap(),
+    )
+    .unwrap();
+    let e = &plan["entries"][0];
+    assert_eq!(e["title"], "~/.cache/pip", "{e}");
+    let root = env.home().join(".cache/pip");
+    assert_eq!(e["kind"]["StoreRule"]["rule"]["root"], root.to_str().unwrap(), "{e}");
+}
+
 #[test]
 fn cli_bad_config_exits_nonzero() {
     let env = Env::new();

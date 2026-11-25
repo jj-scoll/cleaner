@@ -9,6 +9,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use crate::category::{Category, ScanCtx, ScanOutput};
+use crate::fmt::plural;
 use crate::fsutil::measure::{InodeSet, measure, newest_mtime_excluding};
 use crate::plan::{Entry, EntryKind, Skip, Target, fingerprint};
 use crate::protect::Protector;
@@ -419,9 +420,9 @@ impl Category for Artifacts {
             let days = idle_secs.max(0) / 86_400;
             let selected = idle_secs > cfg.stale_after_days as i64 * 86_400;
             let age_reason = if selected {
-                format!("untouched for {days} days")
+                format!("untouched for {}", plural(days, "day"))
             } else {
-                format!("active {days} days ago")
+                format!("active {} ago", plural(days, "day"))
             };
             let mut reason = age_reason.clone();
             // A project inside a linked worktree (`.git` is a file) that is
@@ -470,10 +471,10 @@ impl Category for Artifacts {
                     out.entries.push(Entry {
                         id: String::new(),
                         category: ID.into(),
-                        title: tilde(&dir, ctx.home),
+                        title: crate::paths::tilde(&dir, ctx.home),
                         kind: EntryKind::Item { targets: vec![Target { path: dir, fp }] },
                         bytes: m.bytes,
-                        reason: format!("CACHEDIR.TAG cache · untouched {days} days"),
+                        reason: format!("CACHEDIR.TAG cache · untouched {}", plural(days, "day")),
                         selected: false,
                         permanent: false,
                         note: None,
@@ -484,13 +485,6 @@ impl Category for Artifacts {
             }
         }
         Ok(out)
-    }
-}
-
-fn tilde(p: &Path, home: &Path) -> String {
-    match p.strip_prefix(home) {
-        Ok(rel) => format!("~/{}", rel.display()),
-        Err(_) => p.display().to_string(),
     }
 }
 

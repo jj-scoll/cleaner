@@ -78,7 +78,8 @@ fn downloads_old_files_only() {
     let e = &out.entries[0];
     assert_eq!(e.category, "user_rules");
     assert!(e.selected);
-    assert_eq!(e.reason, "1 files older than 90 days");
+    assert_eq!(e.title, "~/Downloads");
+    assert_eq!(e.reason, "1 file older than 90 days");
     assert_eq!(rule_matches(e, home), vec![dl.join("old.zip")]);
 }
 
@@ -149,6 +150,8 @@ fn trash_expired_item_both_targets() {
     assert!(e.selected);
     assert!(e.bytes > 0);
     assert!(e.reason.starts_with("in Trash since "), "{}", e.reason);
+    // Shown under `~`; the targets keep the absolute paths they delete.
+    assert_eq!(e.title, "~/.local/share/Trash/files/report (1).pdf");
     assert_eq!(targets(e), vec![payload.clone(), info.clone()]);
 
     let res = with_ctx(home, &config, |ctx| Trash.apply(e, ctx));
@@ -194,6 +197,7 @@ fn trash_malformed_skipped() {
     assert_eq!(out.skipped.len(), 1, "{:?}", out.skipped);
     assert_eq!(out.skipped[0].category, "trash");
     assert_eq!(out.skipped[0].reason, "unreadable trashinfo");
+    assert_eq!(out.skipped[0].title, "~/.local/share/Trash/info/odd.txt.trashinfo");
 }
 
 #[test]

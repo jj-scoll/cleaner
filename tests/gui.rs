@@ -283,6 +283,15 @@ fn settings_shows_root_overrides() {
     assert!(!texts(&SettingsPage::new(&Config::default(), false).page()).iter().any(|t| t.starts_with("Overridden")));
 }
 
+fn settings_counts_one_store_and_app() {
+    let mut c = Config::default();
+    c.caches.stores.truncate(1);
+    c.app_caches.apps.truncate(1);
+    let t = texts(&SettingsPage::new(&c, false).page());
+    assert_has(&t, "1 cache store; edit config.toml to change them.");
+    assert_has(&t, "1 app, skipped while running; edit config.toml to change them.");
+}
+
 fn spin_rows(w: &gtk::Widget) -> Vec<adw::SpinRow> {
     let mut out = Vec::new();
     if let Some(s) = w.downcast_ref::<adw::SpinRow>() {
@@ -461,6 +470,7 @@ fn main() {
         ("settings_general_has_scan_roots_and_low_space", settings_general_has_scan_roots_and_low_space),
         ("settings_shows_root_overrides", settings_shows_root_overrides),
         ("settings_nix_managed_timers", settings_nix_managed_timers),
+        ("settings_counts_one_store_and_app", settings_counts_one_store_and_app),
         ("close_blocked_while_cleaning", close_blocked_while_cleaning),
         ("usage_page_lists_rows", usage_page_lists_rows),
         ("usage_page_has_no_delete", usage_page_has_no_delete),

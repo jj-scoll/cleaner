@@ -8,6 +8,11 @@ pub fn local_time(t: i64, tz: &jiff::tz::TimeZone) -> String {
     }
 }
 
+/// `n` and `word`, with an `s` unless `n` is 1: "1 item", "2 items", "0 days".
+pub fn plural<N: std::fmt::Display + PartialEq + From<u8>>(n: N, word: &str) -> String {
+    if n == N::from(1) { format!("{n} {word}") } else { format!("{n} {word}s") }
+}
+
 /// Binary units with one decimal above bytes: "0 B", "512 B", "1.5 KiB", "71.4 GiB".
 pub fn human_bytes(n: u64) -> String {
     const UNITS: [&str; 6] = ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];

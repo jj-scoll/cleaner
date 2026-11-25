@@ -111,6 +111,15 @@ pub fn expand(pattern: &str, home: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// `path` with a leading `home` shown as `~`, for display only.
+pub fn tilde(path: &Path, home: &Path) -> String {
+    match path.strip_prefix(home) {
+        Ok(rel) if rel.as_os_str().is_empty() => "~".into(),
+        Ok(rel) => format!("~/{}", rel.display()),
+        Err(_) => path.display().to_string(),
+    }
+}
+
 /// `expand()` each root, then drop any path lexically inside another one;
 /// sorted and deduplicated.
 pub fn expand_roots(roots: &[String], home: &Path) -> Vec<PathBuf> {

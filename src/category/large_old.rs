@@ -6,6 +6,7 @@ use std::path::Path;
 
 use crate::category::{Category, ScanCtx, ScanOutput};
 use crate::config::IdleCfg;
+use crate::fmt::plural;
 use crate::fsutil::measure::InodeSet;
 use crate::fsutil::usage::Node;
 use crate::plan::{Entry, EntryKind, Skip, Target, fingerprint};
@@ -84,22 +85,18 @@ impl Visit<'_, '_> {
         let Ok(fp) = fingerprint(path) else { return };
         let days = (self.ctx.now - n.newest_mtime) / 86_400;
         let reason = if n.dir {
-            format!("untouched for {days} days")
+            format!("untouched for {}", plural(days, "day"))
         } else {
-            format!("file untouched for {days} days")
+            format!("file untouched for {}", plural(days, "day"))
         };
         let note = [git_badge(path), self.stale.map(str::to_string)]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
-        let title = match path.strip_prefix(self.ctx.home) {
-            Ok(rel) => format!("~/{}", rel.display()),
-            Err(_) => path.display().to_string(),
-        };
         self.out.report_only.push(Entry {
             id: String::new(),
             category: ID.into(),
-            title,
+            title: crate::paths::tilde(path, self.ctx.home),
             kind: EntryKind::Item { targets: vec![Target { path: path.to_path_buf(), fp }] },
             bytes: n.bytes,
             reason,
@@ -122,7 +119,7 @@ fn git_badge(path: &Path) -> Option<String> {
         return Some("git: no remote".into());
     }
     Some(match crate::git::unpushed_commits(path) {
-        Some(n) if n > 0 => format!("git: {n} unpushed commits"),
+        Some(n) if n > 0 => format!("git: {}", plural(n, "unpushed commit")),
         _ => "git: clean, all branches pushed".into(),
     })
 }

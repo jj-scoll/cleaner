@@ -200,7 +200,8 @@ fn recent_is_listed_unselected() {
     let e = fx.scan();
     let e = only_entry(&e);
     assert!(!e.selected, "{e:?}");
-    assert!(e.reason.contains("idle 1 days"), "{}", e.reason);
+    assert!(e.reason.contains("idle 1 day"), "{}", e.reason);
+    assert!(!e.reason.contains("idle 1 days"), "{}", e.reason);
 }
 
 #[test]

@@ -465,7 +465,7 @@ fn devbox_entry(dir: &Path, ctx: &ScanCtx, seen: &mut InodeSet) -> Option<Entry>
         format!("devbox {}", rel(ctx.home, dir)),
         EntryKind::Item { targets },
         bytes,
-        format!("devbox project untouched for {days} days"),
+        format!("devbox project untouched for {}", crate::fmt::plural(days, "day")),
         true,
     ))
 }

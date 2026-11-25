@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use crate::category::artifacts::legacy_artifact_patterns;
 use crate::category::{Category, Outcome, ScanCtx, ScanOutput};
+use crate::fmt::plural;
 use crate::fsutil::delete::delete_tree;
 use crate::fsutil::measure::{InodeSet, measure, newest_mtime_excluding};
 use crate::git::{self, WorktreeInfo};
@@ -279,7 +280,7 @@ impl Worktrees {
             ino: md.ino(),
             ignored,
         };
-        let reason = format!("{why} · idle {} days", idle.max(0) / 86_400);
+        let reason = format!("{why} · idle {}", plural(idle.max(0) / 86_400, "day"));
         out.entries.push(entry(title, Object::Worktree(r), bytes, reason, selected, note));
     }
 
@@ -295,14 +296,14 @@ impl Worktrees {
             Err(e) => return out.skipped.push(skip(title, &format!("cannot measure: {e}"))),
         };
         let idle = ctx.now - newest_mtime(dir, pats);
-        let days = idle.max(0) / 86_400;
+        let days = plural(idle.max(0) / 86_400, "day");
         // A missing main repo may only be offline: say so rather than blame git (M9).
         let (reason, note) = match git::missing_main_repo(dir) {
             Some(repo) => {
                 let gone = format!("main repo {} not found", map.local(&repo).display());
-                (format!("{gone} · idle {days} days"), format!("{gone}; it can't check for uncommitted work"))
+                (format!("{gone} · idle {days}"), format!("{gone}; it can't check for uncommitted work"))
             }
-            None => (format!("worktree git no longer lists · idle {days} days"), ORPHAN_NOTE.into()),
+            None => (format!("worktree git no longer lists · idle {days}"), ORPHAN_NOTE.into()),
         };
         let obj = Object::OrphanWorktree { path: dir.to_path_buf(), fp };
         out.entries.push(entry(title, obj, m.bytes, reason, false, Some(note)));

@@ -200,7 +200,7 @@ fn git_badge_unpushed() {
     std::fs::write(p.join("more"), "m").unwrap();
     git_commit_all(&p);
     age_all(&p, 100);
-    assert_eq!(badge_note(&scan(tmp.path())), "git: 1 unpushed commits");
+    assert_eq!(badge_note(&scan(tmp.path())), "git: 1 unpushed commit");
 }
 
 #[test]

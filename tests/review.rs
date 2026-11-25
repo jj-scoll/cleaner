@@ -129,6 +129,7 @@ fn confirm_copy() {
     assert!(c.body.ends_with(" Cache rule sizes are estimates."), "{}", c.body);
     // Filtered to trash, no store rule is included.
     assert!(!m.confirm(Some("trash")).body.contains("estimates"));
+    assert_eq!(m.confirm(Some("trash")).heading, "Delete 1 item?");
 }
 
 #[test]

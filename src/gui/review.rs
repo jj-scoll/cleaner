@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 use crate::category::store::{StoreRule, top_matches};
-use crate::fmt::human_bytes;
+use crate::fmt::{human_bytes, plural};
 use crate::plan::EntryKind;
 use crate::view::category_label;
 use crate::view::review::{Confirm, ReviewModel, Row, Sort};
@@ -141,7 +141,7 @@ fn load_top_matches(row: &adw::ExpanderRow, rule: StoreRule) {
                         let days = (now - m.newest_mtime).max(0) / 86_400;
                         let child = adw::ActionRow::builder()
                             .title(m.path.display().to_string())
-                            .subtitle(format!("{days} days old"))
+                            .subtitle(format!("{} old", plural(days, "day")))
                             .use_markup(false)
                             .build();
                         child.add_suffix(&bytes_label(m.bytes, false));

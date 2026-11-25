@@ -43,7 +43,7 @@ impl Category for Trash {
             let payload = files_dir.join(OsStr::from_bytes(name));
             let skip = |reason: &str| Skip {
                 category: ID.into(),
-                title: info.display().to_string(),
+                title: crate::paths::tilde(&info, ctx.home),
                 reason: reason.into(),
             };
             if matches!(name, b"" | b"." | b"..") {
@@ -79,7 +79,7 @@ impl Category for Trash {
                 }
                 Ok(_) => (vec![payload.as_path(), info.as_path()], format!("in Trash since {date}")),
             };
-            match item(&paths, reason, seen) {
+            match item(&paths, reason, ctx.home, seen) {
                 Some(e) => out.entries.push(e),
                 None => out.skipped.push(skip("changed during scan")),
             }
@@ -99,8 +99,8 @@ fn deletion_date(info: &Path) -> Option<(jiff::civil::Date, i64)> {
     Some((dt.date(), ts.as_second()))
 }
 
-/// An Item over `paths` (the first is the title), each fingerprinted.
-fn item(paths: &[&Path], reason: String, seen: &mut InodeSet) -> Option<Entry> {
+/// An Item over `paths` (the first, under `~`, is the title), each fingerprinted.
+fn item(paths: &[&Path], reason: String, home: &Path, seen: &mut InodeSet) -> Option<Entry> {
     let mut targets = Vec::new();
     let mut bytes = 0;
     for p in paths {
@@ -110,7 +110,7 @@ fn item(paths: &[&Path], reason: String, seen: &mut InodeSet) -> Option<Entry> {
     Some(Entry {
         id: String::new(),
         category: ID.into(),
-        title: paths[0].display().to_string(),
+        title: crate::paths::tilde(paths[0], home),
         kind: EntryKind::Item { targets },
         bytes,
         reason,

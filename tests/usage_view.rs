@@ -81,6 +81,12 @@ fn other_row_last() {
     assert_eq!(last.name, "other (4 items)");
     assert_eq!(last.bytes, 5);
     assert_eq!(last.path, None);
+
+    let mut root = dir("r", 101, vec![dir("a", 100, vec![])]);
+    root.other_bytes = 1;
+    root.other_count = 1;
+    let l = level(&index(root, 101), Path::new("/r"), None, NOW, &TimeZone::UTC).unwrap();
+    assert_eq!(l.rows.last().unwrap().name, "other (1 item)");
 }
 
 #[test]
