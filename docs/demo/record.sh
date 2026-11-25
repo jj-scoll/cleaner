@@ -20,7 +20,7 @@ python3 -I docs/demo/screenshot.py docs/demo/review.png "$id"
 
 asciinema rec --headless --window-size 124x26 \
   -c "python3 -I $PWD/docs/demo/drive.py" "$cast"
-agg --font-size 16 --theme monokai --idle-time-limit 8 --last-frame-duration 4 \
+agg --font-size 16 --theme github-dark --idle-time-limit 8 --last-frame-duration 4 \
   "$cast" docs/demo/demo.gif
 
 rm -rf "$demo" "$cast"
