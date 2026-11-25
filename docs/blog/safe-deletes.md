@@ -19,8 +19,6 @@ Reviewer notes (not part of the prose). Each claim and where it comes from, at v
 - store rules re-evaluated at apply time: src/category/store.rs
 - protected paths (.git, vendored, AI-tool state, user list): src/protect.rs
 - large-and-old is report-only; no undo/trash: README.md "What it finds" / "Safety"
-- The ClamAV anecdote is the author's own experience (from the brief), not in the repo. Kept generic on purpose;
-  author: confirm or adjust the details before publishing.
 -->
 
 # Deleting files safely
@@ -85,8 +83,6 @@ Stopping isn't rolling back, though: whatever it removed in that tree before rea
 The plan's sizes come from `lstat`: `st_blocks × 512` per file, hardlinks counted once across the plan. That's a good estimate, but what I care about is how much free space I got back.
 
 So "Freed" is measured: cleaner calls `statvfs` on each filesystem involved before applying and again afterwards, and reports the difference in available bytes. The log also records per-entry bytes, but the headline number is the filesystem's own.
-
-I learned why the difference matters on one of my own machines. I deleted a large pile of files and expected the space back, and the per-file accounting agreed with me. The free space barely moved. A long-running ClamAV daemon still had many of those files open. On Linux, unlinking a file removes its name, but the blocks aren't freed until the last open descriptor closes, so the space was held by a process that had no reason to let go. (`lsof +L1`, or `(deleted)` entries under `/proc/*/fd`, will show you this.) Restarting the daemon gave the space back. An estimate would have said "done"; the measured number showed that it wasn't.
 
 Measuring has its own noise: anything else writing to the disk during the run shows up in the difference, in either direction. I'd still rather report a number that's sometimes noisy than one that's sometimes wrong.
 
