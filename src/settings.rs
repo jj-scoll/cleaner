@@ -118,6 +118,19 @@ impl ConfigDoc {
         if n.ai_models.enabled != o.ai_models.enabled {
             changes.push(("ai_models", "enabled", n.ai_models.enabled.into()));
         }
+        let (nt, ot) = (&n.toolchains, &o.toolchains);
+        for (key, new, old) in [
+            ("enabled", nt.enabled, ot.enabled),
+            ("rustup", nt.rustup, ot.rustup),
+            ("nvm", nt.nvm, ot.nvm),
+            ("pyenv", nt.pyenv, ot.pyenv),
+            ("conda", nt.conda, ot.conda),
+            ("flatpak", nt.flatpak, ot.flatpak),
+        ] {
+            if new != old {
+                changes.push(("toolchains", key, new.into()));
+            }
+        }
         let (nd, od) = (&n.docker, &o.docker);
         if nd.enabled != od.enabled {
             changes.push(("docker", "enabled", nd.enabled.into()));

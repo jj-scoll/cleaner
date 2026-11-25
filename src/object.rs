@@ -33,6 +33,17 @@ pub enum Object {
         #[serde(with = "crate::plan::path_codec")]
         target: PathBuf,
     },
+    /// Removed with `rustup toolchain uninstall NAME`; `path` is its dir.
+    RustupToolchain {
+        name: String,
+        #[serde(with = "crate::plan::path_codec")]
+        path: PathBuf,
+    },
+    /// A user-installation runtime, removed with `flatpak uninstall --user`.
+    /// `flatpak_ref` is the full ref, e.g. `runtime/org.gnome.Platform/x86_64/45`.
+    Flatpak {
+        flatpak_ref: String,
+    },
 }
 
 /// A linked worktree as `git worktree list` showed it at plan time.
@@ -73,7 +84,11 @@ pub struct DockerRef {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Operation {
     UvCachePrune,
-    DockerBuilderPrune { until_hours: u64 },
+    DockerBuilderPrune {
+        until_hours: u64,
+    },
     NixStoreGc,
     GoCleanModcache,
+    /// `conda clean --packages --tarballs`: conda decides what goes.
+    CondaClean,
 }

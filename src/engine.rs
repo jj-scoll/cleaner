@@ -13,6 +13,7 @@ use crate::category::docker::Docker;
 use crate::category::ide_versions::IdeVersions;
 use crate::category::large_old::LargeOld;
 use crate::category::nix::Nix;
+use crate::category::toolchains::{ToolEnv, Toolchains};
 use crate::category::trash::Trash;
 use crate::category::user_rules::UserRules;
 use crate::category::worktrees::Worktrees;
@@ -72,6 +73,9 @@ pub fn registry(cfg: &Config) -> Vec<Box<dyn Category>> {
     }
     if cfg.ai_models.enabled {
         cats.push(Box::new(AiModels::from_process_env()));
+    }
+    if cfg.toolchains.enabled {
+        cats.push(Box::new(Toolchains::new(ToolEnv::from_process())));
     }
     cats.push(Box::new(UserRules));
     if cfg.trash.enabled {

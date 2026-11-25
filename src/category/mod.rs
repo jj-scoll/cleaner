@@ -10,6 +10,7 @@ pub mod ide_versions;
 pub mod large_old;
 pub mod nix;
 pub mod store;
+pub mod toolchains;
 pub mod trash;
 pub mod user_rules;
 pub mod worktrees;

@@ -77,7 +77,14 @@ impl Category for Caches {
             }
         }
 
-        for tc in crate::paths::expand("~/.rustup/toolchains/*", ctx.home) {
+        // The toolchains category owns ~/.rustup when its rustup check is on.
+        let tc_cfg = &ctx.config.toolchains;
+        let toolchain_dirs = if tc_cfg.enabled && tc_cfg.rustup {
+            Vec::new()
+        } else {
+            crate::paths::expand("~/.rustup/toolchains/*", ctx.home)
+        };
+        for tc in toolchain_dirs {
             if ctx.protector.is_protected(&tc) {
                 continue;
             }

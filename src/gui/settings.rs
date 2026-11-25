@@ -250,6 +250,8 @@ struct Inner {
     ide_enabled: adw::SwitchRow,
     ide_idle: adw::SpinRow,
     ai_enabled: adw::SwitchRow,
+    /// enabled, rustup, nvm, pyenv, conda, flatpak
+    toolchains: [adw::SwitchRow; 6],
     docker_enabled: adw::SwitchRow,
     container_days: adw::SpinRow,
     build_cache_days: adw::SpinRow,
@@ -299,6 +301,13 @@ impl Inner {
         c.ide_versions.enabled = self.ide_enabled.is_active();
         c.ide_versions.idle_days = self.ide_idle.value().round() as u64;
         c.ai_models.enabled = self.ai_enabled.is_active();
+        let [enabled, rustup, nvm, pyenv, conda, flatpak] = &self.toolchains;
+        c.toolchains.enabled = enabled.is_active();
+        c.toolchains.rustup = rustup.is_active();
+        c.toolchains.nvm = nvm.is_active();
+        c.toolchains.pyenv = pyenv.is_active();
+        c.toolchains.conda = conda.is_active();
+        c.toolchains.flatpak = flatpak.is_active();
         c.docker.enabled = self.docker_enabled.is_active();
         c.docker.container_days = self.container_days.value().round() as u64;
         c.docker.build_cache_days = self.build_cache_days.value().round() as u64;
@@ -500,6 +509,24 @@ impl SettingsPage {
         );
         let ai_enabled = switch("Enabled", config.ai_models.enabled);
         ai.add(&ai_enabled);
+        let t = &config.toolchains;
+        let toolchains_group = group(
+            "Toolchains and runtimes",
+            Some(
+                "Never the default, newest or pinned version; skipped if the tool isn't installed.",
+            ),
+        );
+        let toolchains = [
+            switch("Enabled", t.enabled),
+            switch("Old rustup toolchains", t.rustup),
+            switch("Old nvm Node versions", t.nvm),
+            switch("Old pyenv Python versions", t.pyenv),
+            switch("Conda package cache", t.conda),
+            switch("Unused Flatpak runtimes", t.flatpak),
+        ];
+        for s in &toolchains {
+            toolchains_group.add(s);
+        }
 
         let d = &config.docker;
         let docker = group("Docker", None);
@@ -655,6 +682,7 @@ impl SettingsPage {
             &app_caches,
             &ide,
             &ai,
+            &toolchains_group,
             &docker,
             &nix,
             &rules_group,
@@ -714,6 +742,7 @@ impl SettingsPage {
             ide_enabled,
             ide_idle,
             ai_enabled,
+            toolchains,
             docker_enabled,
             container_days,
             build_cache_days,

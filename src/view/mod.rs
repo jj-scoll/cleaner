@@ -22,6 +22,7 @@ pub fn category_label(id: &str) -> String {
         "app_caches" => "Browser and app caches",
         "ide_versions" => "Old IDE versions",
         "ai_models" => "AI models",
+        "toolchains" => "Toolchains and runtimes",
         "docker" => "Docker",
         "nix" => "Nix",
         "scan_roots" => "Scan roots",

@@ -281,9 +281,11 @@ fn apply_selected_respects_lock() {
 }
 
 /// `plan_and_save` builds its own `SystemRunner`, so switch off every
-/// tool-backed category: no docker, nix, uv or go runs (spec §8, hermetic).
+/// tool-backed category: no docker, nix, uv, go, rustup, conda or flatpak
+/// runs (spec §8, hermetic).
 fn hermetic(mut ctx: Ctx) -> Ctx {
     ctx.config.docker.enabled = false;
+    ctx.config.toolchains.enabled = false;
     ctx.config.nix.enabled = false;
     ctx.config.caches.uv_prune = false;
     ctx.config.caches.go_clean = false;
@@ -324,6 +326,7 @@ fn registry_order_plan2() {
             "app_caches",
             "ide_versions",
             "ai_models",
+            "toolchains",
             "user_rules",
             "trash",
             "idle_folders",

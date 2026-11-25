@@ -554,6 +554,36 @@ fn settings_nix_managed_timers() {
     );
 }
 
+/// One switch per tool, between the app caches and Docker groups.
+fn settings_shows_toolchains_group() {
+    let page = SettingsPage::new(&Config::default(), false);
+    let texts = texts(&page.page());
+    let at = |t: &str| {
+        texts
+            .iter()
+            .position(|s| s == t)
+            .unwrap_or_else(|| panic!("no {t:?} in {texts:?}"))
+    };
+    let order = [
+        "Browser and app caches",
+        "Toolchains and runtimes",
+        "Docker",
+    ]
+    .map(at);
+    assert!(order.is_sorted(), "groups out of order: {order:?}");
+    for title in [
+        "Old rustup toolchains",
+        "Old nvm Node versions",
+        "Old pyenv Python versions",
+        "Conda package cache",
+        "Unused Flatpak runtimes",
+    ] {
+        let row =
+            find_row(page.page().upcast_ref(), title).unwrap_or_else(|| panic!("no row {title:?}"));
+        assert!(row.is_sensitive(), "{title}");
+    }
+}
+
 /// 0 days would pre-select every stopped container or prune all unused build cache.
 fn settings_docker_days_at_least_one() {
     let page = SettingsPage::new(&Config::default(), false);
@@ -787,6 +817,10 @@ fn main() {
         (
             "settings_shows_ai_and_ide_groups",
             settings_shows_ai_and_ide_groups,
+        ),
+        (
+            "settings_shows_toolchains_group",
+            settings_shows_toolchains_group,
         ),
         (
             "settings_docker_days_at_least_one",

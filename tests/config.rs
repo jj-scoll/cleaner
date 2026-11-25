@@ -225,6 +225,18 @@ fn ai_and_ide_sources_can_be_turned_off_one_by_one() {
 }
 
 #[test]
+fn default_toml_lists_toolchains_keys() {
+    let t: toml::Table = toml::from_str(&uncomment(DEFAULT_CONFIG_TOML)).unwrap();
+    for key in ["enabled", "rustup", "nvm", "pyenv", "conda", "flatpak"] {
+        assert_eq!(t["toolchains"][key].as_bool(), Some(true), "{key}");
+    }
+    let (c, w) = cleaner::config::parse("[toolchains]\nflatpak = false\n").unwrap();
+    assert!(w.is_empty(), "{w:?}");
+    assert!(!c.toolchains.flatpak);
+    assert!(c.toolchains.enabled && c.toolchains.rustup && c.toolchains.conda);
+}
+
+#[test]
 fn default_toml_lists_plan4_keys() {
     let t: toml::Table = toml::from_str(&uncomment(DEFAULT_CONFIG_TOML)).unwrap();
     assert_eq!(t["scan_roots"].as_array().unwrap().len(), 1);

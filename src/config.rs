@@ -26,6 +26,7 @@ pub struct Config {
     pub app_caches: AppCachesCfg,
     pub ide_versions: IdeVersionsCfg,
     pub ai_models: AiModelsCfg,
+    pub toolchains: ToolchainsCfg,
     pub docker: DockerCfg,
     pub nix: NixCfg,
     pub low_space: LowSpaceCfg,
@@ -174,6 +175,23 @@ pub struct AiModelsCfg {
     pub huggingface: bool,
     pub ollama: bool,
     pub lmstudio: bool,
+}
+
+/// Old toolchains and runtimes; each tool can be switched off on its own.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct ToolchainsCfg {
+    pub enabled: bool,
+    /// rustup toolchains other than the default, newest stable and pinned ones.
+    pub rustup: bool,
+    /// nvm Node versions other than the default alias and the newest.
+    pub nvm: bool,
+    /// pyenv Python versions other than the global, newest and pinned ones.
+    pub pyenv: bool,
+    /// The conda package cache (`conda clean`, or only tarballs without conda).
+    pub conda: bool,
+    /// Flatpak runtimes no app uses, in the user installation.
+    pub flatpak: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -327,6 +345,7 @@ impl Default for Config {
             app_caches: AppCachesCfg::default(),
             ide_versions: IdeVersionsCfg::default(),
             ai_models: AiModelsCfg::default(),
+            toolchains: ToolchainsCfg::default(),
             docker: DockerCfg::default(),
             nix: NixCfg::default(),
             low_space: LowSpaceCfg::default(),
@@ -444,6 +463,19 @@ impl Default for AiModelsCfg {
             huggingface: true,
             ollama: true,
             lmstudio: true,
+        }
+    }
+}
+
+impl Default for ToolchainsCfg {
+    fn default() -> Self {
+        ToolchainsCfg {
+            enabled: true,
+            rustup: true,
+            nvm: true,
+            pyenv: true,
+            conda: true,
+            flatpak: true,
         }
     }
 }
@@ -748,6 +780,21 @@ pub const DEFAULT_CONFIG_TOML: &str = r#"# cleaner configuration.
 # huggingface = true
 # ollama = true
 # lmstudio = true
+[toolchains]
+# Old language toolchains and runtimes. Never offered: the default rustup
+# toolchain, stable and the newest numbered release; nvm's default alias
+# and newest Node; pyenv's global and newest Python; versions pinned by a
+# rust-toolchain(.toml) or .python-version file under scan_roots; Flatpak
+# runtimes an installed app needs. Each tool is skipped if not installed.
+# enabled = true
+# rustup = true
+# nvm = true
+# pyenv = true
+# Runs conda clean --packages --tarballs, or removes only the tarballs
+# when conda itself isn't installed.
+# conda = true
+# Unused runtimes of the user installation (flatpak uninstall --user).
+# flatpak = true
 
 [docker]
 # enabled = true

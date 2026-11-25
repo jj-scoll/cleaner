@@ -243,6 +243,26 @@ fn plan2_every_key_roundtrips() {
 }
 
 #[test]
+fn toolchains_keys_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    let path = write_config(&dir, DEFAULT_CONFIG_TOML);
+    let mut doc = ConfigDoc::load(&path).unwrap();
+    let mut c = doc.config().unwrap();
+    c.toolchains.enabled = false;
+    c.toolchains.rustup = false;
+    c.toolchains.nvm = false;
+    c.toolchains.pyenv = false;
+    c.toolchains.conda = false;
+    c.toolchains.flatpak = false;
+    doc.update(&c).unwrap();
+    doc.save(&path).unwrap();
+
+    let (loaded, warnings) = config::load(&path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(loaded, c, "{}", fs::read_to_string(&path).unwrap());
+}
+
+#[test]
 fn validate_plan2() {
     let mut c = Config::default();
     c.nix.keep = 0;
